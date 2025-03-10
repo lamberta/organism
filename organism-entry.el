@@ -92,6 +92,35 @@
            (node-label entry))
     stream))
 
+;;; Helper Macros
+
+(cl-defmacro organism-with-entry-location (entry &body body &aux (refresh nil))
+  "Execute BODY at the location of ENTRY in its file.
+Usage: (organism-with-entry-location entry :refresh ...) to reload buffer before
+execution. Return nil if entry's location cannot be found."
+  (declare (indent 1) (debug t))
+  (when (eq (car body) :refresh)
+    (setq
+      refresh t
+      body (cdr body)))
+
+  `(let ((marker (org-id-find (node-id ,entry) t)))
+     (if (not marker)
+       (progn
+         (organism-debug "Could not find location for ID: %s" (node-id ,entry))
+         nil)
+       (unwind-protect
+         (save-excursion
+           (with-current-buffer (marker-buffer marker)
+             (when ,refresh
+               (condition-case err
+                 (revert-buffer t t t)
+                 (error
+                   (organism-debug "Error refreshing buffer: %s" (error-message-string err)))))
+             (goto-char marker)
+             ,@body))
+         (move-marker marker nil)))))
+
 ;;; Initialization and Refresh
 
 (cl-defmethod initialize-instance :after ((entry organism-entry) &rest _)
@@ -129,35 +158,6 @@
   (graph-node-attr-put entry :links-entry-only nil)
   (graph-node-attr-put entry :links-with-subtree nil)
   (graph-node-attr-put entry :cached-element nil))
-
-;;; Helper Macros
-
-(cl-defmacro organism-with-entry-location (entry &body body &aux (refresh nil))
-  "Execute BODY at the location of ENTRY in its file.
-Usage: (organism-with-entry-location entry :refresh ...) to reload buffer before
-execution. Return nil if entry's location cannot be found."
-  (declare (indent 1) (debug t))
-  (when (eq (car body) :refresh)
-    (setq
-      refresh t
-      body (cdr body)))
-
-  `(let ((marker (org-id-find (node-id ,entry) t)))
-     (if (not marker)
-       (progn
-         (organism-debug "Could not find location for ID: %s" (node-id ,entry))
-         nil)
-       (unwind-protect
-         (save-excursion
-           (with-current-buffer (marker-buffer marker)
-             (when ,refresh
-               (condition-case err
-                 (revert-buffer t t t)
-                 (error
-                   (organism-debug "Error refreshing buffer: %s" (error-message-string err)))))
-             (goto-char marker)
-             ,@body))
-         (move-marker marker nil)))))
 
 ;;; Predicates
 

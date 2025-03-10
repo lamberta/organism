@@ -31,10 +31,10 @@
 (require 'org-id)
 (require 'cl-lib)
 
-;;;; Debugging Utilities
+;; Declare free variable defined in main file.
+(defvar organism-directory)
 
-;(defvar organism-debug-enabled nil
-;  "When non-nil, output debug messages during organism operations.")
+;;;; Debugging Utilities
 
 (defun organism-debug (format-string &rest args)
   "Output debug message if `organism-debug-enabled' is non-nil.

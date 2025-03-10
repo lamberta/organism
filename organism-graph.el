@@ -41,6 +41,11 @@
 
 ;;; Variables
 
+;; Declare free variables defined in main file.
+(defvar organism-directory)
+(defvar organism-exclude-file-regexp)
+(defvar organism-file-match)
+
 (defvar organism-graph nil
   "The global organism graph object.
 This is the in-memory representation of entries and their connections.")
