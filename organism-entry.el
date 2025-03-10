@@ -114,7 +114,10 @@ execution. Return nil if entry's location cannot be found."
            (with-current-buffer (marker-buffer marker)
              (when ,refresh
                (condition-case err
-                 (revert-buffer t t t)
+                 (progn
+                   (revert-buffer t t t)
+                   (org-set-regexps-and-options)  ;; Rebuild tags, todos, etc.
+                   (org-element-cache-reset))     ;; Reset element cache
                  (error
                    (organism-debug "Error refreshing buffer: %s" (error-message-string err)))))
              (goto-char marker)

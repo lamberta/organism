@@ -251,6 +251,38 @@
       ;; Cleanup
       (organism-entry-test--teardown))))
 
+(ert-deftest organism-entry-test-tags-caching-test ()
+  "Test organism-entry refreshing file tags."
+  (let ((file-id (org-id-uuid))
+        (file-path nil))
+    (unwind-protect
+      (progn
+        (organism-entry-test--setup)
+        ;; Create initial file with tags
+        (setq file-path (organism-entry-test--create-file "TagsTest.org"
+                          (format ":PROPERTIES:\n:ID:       %s\n:END:\n#+TITLE: Tags Test\n#+FILETAGS: :one:two:\n\nContent" file-id)))
+        (organism-entry-test--register-id file-id file-path)
+
+        ;; Create entry and verify initial tags
+        (let ((entry (make-instance 'organism-entry :id file-id)))
+          (let ((initial-tags (organism-entry-tags entry)))
+            (should (= (length initial-tags) 2))
+            (should (member "one" initial-tags))
+            (should (member "two" initial-tags)))
+
+          ;; Modify file tags
+          (with-temp-file file-path
+            (insert (format ":PROPERTIES:\n:ID:       %s\n:END:\n#+TITLE: Tags Test\n#+FILETAGS: :one:two:three:\n\nContent" file-id)))
+          ;; Refresh and verify updated tags
+          (organism-entry--refresh entry)
+          (let ((updated-tags (organism-entry-tags entry)))
+            (should (= (length updated-tags) 3))
+            (should (member "one" updated-tags))
+            (should (member "two" updated-tags))
+            (should (member "three" updated-tags)))))
+      ;; Cleanup
+      (organism-entry-test--teardown))))
+
 (ert-deftest organism-entry-test-links-test ()
   "Test organism-entry link extraction."
   (let ((file-id (org-id-uuid))
