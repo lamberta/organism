@@ -64,38 +64,7 @@ Used to avoid infinite loops when updating interconnected entries.")
            (not (string-match-p organism-exclude-file-regexp file)))
        (file-in-directory-p file organism-directory)))
 
-(defun organism-graph-initialize ()
-  "Initialize and build the organism graph from org files."
-  (when organism-graph
-    (organism-graph-cleanup))
-
-  (organism-debug "Creating new organism graph")
-  (setq organism-graph (make-instance 'graph))
-
-  (org-id-locations-load)  ; Load existing ID locations
-
-  ;; Update ID locations by scanning matching org files
-  (organism-debug "Scanning for IDs in %s" organism-directory)
-  (let ((files (seq-filter #'organism-graph--file-matches-criteria-p
-                 (directory-files-recursively organism-directory "\\.org$"))))
-    (organism-debug "Found %d matching org files to scan" (length files))
-    (org-id-update-id-locations files))
-
-  ;; Build the graph from entry IDs
-  (organism-graph-build)
-  organism-graph)
-
-(defun organism-graph-cleanup ()
-  "Clean up the organism graph and release resources.
-Releases all memory used by the graph. Returns t if cleanup was performed,
-nil if there was no graph to clean up."
-  (when organism-graph
-    (organism-debug "Cleaning up organism graph with %d nodes"
-      (graph-node-count organism-graph))
-    (setq organism-graph nil)
-    t))
-
-(defun organism-graph-build ()
+(defun organism-graph--build ()
   "Build the graph by adding entries for all IDs in org-id-locations."
   (organism-debug "Building graph from org-id-locations with %d entries"
     (hash-table-count org-id-locations))
@@ -114,6 +83,58 @@ nil if there was no graph to clean up."
     (organism-debug "Graph build complete: %d entries, %d edges"
       (graph-node-count organism-graph)
       (graph-edge-count organism-graph))))
+
+(defun organism-graph-start ()
+  "Initialize and build the organism graph from org files."
+  (if organism-graph
+    (organism-graph-stop))
+
+  (organism-debug "Creating new organism graph")
+  (setq organism-graph (make-instance 'graph))
+
+  (org-id-locations-load)  ; Load existing ID locations
+
+  ;; Update ID locations by scanning matching org files
+  (organism-debug "Scanning for IDs in %s" organism-directory)
+  (let ((files (seq-filter #'organism-graph--file-matches-criteria-p
+                 (directory-files-recursively organism-directory "\\.org$"))))
+    (organism-debug "Found %d matching org files to scan" (length files))
+    (org-id-update-id-locations files))
+
+  ;; Build the graph from entry IDs
+  (organism-graph--build)
+  organism-graph)
+
+(defun organism-graph-stop ()
+  "Clean up the organism graph and release resources.
+Releases all memory used by the graph. Returns t if cleanup was performed,
+nil if there was no graph to clean up."
+  (when organism-graph
+    (organism-debug "Cleaning up organism graph with %d nodes"
+      (graph-node-count organism-graph))
+    (setq organism-graph nil)
+    t))
+
+(defun organism-graph-refresh ()
+  "Refresh all entries in the organism graph, clear caches, etc."
+  (unless organism-graph
+    (user-error "Organism graph not started"))
+
+  (organism-debug "Refreshing organism graph...")
+  (let ((organism-graph--processing t)
+        (entry-count 0)
+        (connection-count 0))
+    ;; Refresh each entry
+    (dolist (entry (organism-graph-entries))
+      (organism-entry--refresh entry)
+      (cl-incf entry-count)
+      ;; Update its connections
+      (when-let ((connections (organism-graph--try-update-connections entry)))
+        (cl-incf connection-count connections)))
+
+    (organism-debug "Refreshed %d entries with %d connections"
+      entry-count connection-count))
+  t)
 
 (defun organism-graph--try-create-entry (id)
   "Try to create an entry with ID, handling any errors.

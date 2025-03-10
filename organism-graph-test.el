@@ -80,29 +80,6 @@
 
 ;;; Basic Graph Tests
 
-(ert-deftest organism-graph-test-initialization ()
-  "Test graph initialization and cleanup."
-  (let ((old-org-directory org-directory)
-        (old-organism-directory organism-directory))
-    (unwind-protect
-      (progn
-        (organism-graph-test--setup)
-        ;; Set directories to test directory
-        (setq org-directory organism-graph-test--temp-dir)
-        (setq organism-directory organism-graph-test--temp-dir)
-        ;; Test initialization on empty directory
-        (let ((graph (organism-graph-initialize)))
-          (should graph)
-          (should (= (graph-node-count graph) 0))
-          (should (= (graph-edge-count graph) 0)))
-        ;; Test cleanup
-        (should (organism-graph-cleanup))
-        (should-not organism-graph))
-      ;; Cleanup
-      (setq org-directory old-org-directory)
-      (setq organism-directory old-organism-directory)
-      (organism-graph-test--teardown))))
-
 (ert-deftest organism-graph-test-build ()
   "Test building the organism graph."
   (let ((old-org-directory org-directory)
@@ -130,7 +107,7 @@
           (format "This links back to [[id:%s][file 1]]." id1))
 
         ;; Initialize and check structure
-        (organism-graph-initialize)
+        (organism-graph-start)
 
         ;; Verify graph content
         (should (= (graph-node-count organism-graph) 3))
@@ -147,6 +124,72 @@
           (should (string= (organism-entry-title entry1) "File1"))
           (should (organism-entry-file-p entry1))
           (should-not (organism-entry-heading-p entry1))))
+      ;; Cleanup
+      (setq org-directory old-org-directory)
+      (setq organism-directory old-organism-directory)
+      (organism-graph-test--teardown))))
+
+(ert-deftest organism-graph-test-start ()
+  "Test graph initialization and cleanup."
+  (let ((old-org-directory org-directory)
+        (old-organism-directory organism-directory))
+    (unwind-protect
+      (progn
+        (organism-graph-test--setup)
+        ;; Set directories to test directory
+        (setq org-directory organism-graph-test--temp-dir)
+        (setq organism-directory organism-graph-test--temp-dir)
+        ;; Test initialization on empty directory
+        (let ((graph (organism-graph-start)))
+          (should graph)
+          (should (= (graph-node-count graph) 0))
+          (should (= (graph-edge-count graph) 0)))
+        ;; Test cleanup
+        (should (organism-graph-stop))
+        (should-not organism-graph))
+      ;; Cleanup
+      (setq org-directory old-org-directory)
+      (setq organism-directory old-organism-directory)
+      (organism-graph-test--teardown))))
+
+(ert-deftest organism-graph-test-refresh ()
+  "Test refreshing the entire graph."
+  (let ((old-org-directory org-directory)
+        (old-organism-directory organism-directory)
+        (id1 (org-id-uuid))
+        (id2 (org-id-uuid))
+        (file-path nil))
+    (unwind-protect
+      (progn
+        (organism-graph-test--setup)
+        ;; Set directories to test directory
+        (setq org-directory organism-graph-test--temp-dir)
+        (setq organism-directory organism-graph-test--temp-dir)
+        ;; Create initial files
+        (setq file-path
+          (organism-graph-test--create-org-file id1 "File1" "No links yet."))
+        (organism-graph-test--create-org-file id2 "File2" "Target file")
+
+        ;; Start graph
+        (organism-graph-start)
+        (should (= (graph-node-count organism-graph) 2))
+        (should (= (graph-edge-count organism-graph) 0))
+
+        ;; Modify file1 to add a link to file2
+        (with-temp-file file-path
+          (insert (format ":PROPERTIES:\n:ID: %s\n:END:\n#+TITLE: File1\n\nNow links to [[id:%s][File2]]."
+                    id1 id2)))
+
+        ;; Refresh entire graph
+        (organism-graph-refresh)
+
+        ;; Check that edge was created during refresh
+        (should (= (graph-edge-count organism-graph) 1))
+        (let ((node1 (organism-graph-get-entry id1)))
+          (should node1)
+          (let ((linked (organism-graph-linked-entries node1)))
+            (should (= (length linked) 1))
+            (should (equal (node-id (car linked)) id2)))))
       ;; Cleanup
       (setq org-directory old-org-directory)
       (setq organism-directory old-organism-directory)
@@ -179,7 +222,7 @@
           (organism-graph-test--create-org-file id1 "File1" "No links yet."))
         (organism-graph-test--create-org-file id2 "File2" "Target file")
         ;; Initialize graph first with both files
-        (organism-graph-initialize)
+        (organism-graph-start)
         (should (= (graph-node-count organism-graph) 2))
         (should (= (graph-edge-count organism-graph) 0))
         ;; Now modify file1 to add a link to file2
@@ -218,7 +261,7 @@
           id1 "File1"
           (format "This links to a nonexistent ID: [[id:%s][missing]]." missing-id))
         ;; Initialize graph - should not error
-        (organism-graph-initialize)
+        (organism-graph-start)
         (should (= (graph-node-count organism-graph) 1))
         (should (= (graph-edge-count organism-graph) 0))
         ;; Check entry properties
@@ -252,7 +295,7 @@
           (organism-graph-test--register-id heading1-id file-path)
           (organism-graph-test--register-id heading2-id file-path)
           ;; Initialize graph
-          (organism-graph-initialize)
+          (organism-graph-start)
           (should (= (graph-node-count organism-graph) 3))
           ;; Check heading entries
           (let ((file-entry (organism-graph-get-entry file-id))
@@ -302,7 +345,7 @@
           "No outgoing links.")
 
         ;; Initialize graph
-        (organism-graph-initialize)
+        (organism-graph-start)
         (should (= (graph-edge-count organism-graph) 3))
 
         ;; Test outgoing links
