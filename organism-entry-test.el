@@ -76,7 +76,7 @@
 
 ;;; Basic Initialization Tests
 
-(ert-deftest organism-entry-test-init-test ()
+(ert-deftest organism-entry-test-init ()
   "Test organism-entry creation and initialization."
   (let ((id (org-id-uuid))
         (file-path nil))
@@ -102,7 +102,7 @@
       ;; Cleanup
       (organism-entry-test--teardown))))
 
-(ert-deftest organism-entry-test-heading-test ()
+(ert-deftest organism-entry-test-heading ()
   "Test organism-entry with headline entries."
   (let ((file-id (org-id-uuid))
         (heading-id (org-id-uuid))
@@ -129,7 +129,7 @@
 
 ;;; Property and Attribute Tests
 
-(ert-deftest organism-entry-test-property-test ()
+(ert-deftest organism-entry-test-property ()
   "Test organism-entry property access."
   (let ((file-id (org-id-uuid))
         (file-path nil))
@@ -150,7 +150,7 @@
       ;; Cleanup
       (organism-entry-test--teardown))))
 
-(ert-deftest organism-entry-test-label-test ()
+(ert-deftest organism-entry-test-label ()
   "Test organism-entry-label function."
   (let ((file-id (org-id-uuid))
         (heading-id (org-id-uuid)))
@@ -171,7 +171,7 @@
       ;; Cleanup
       (organism-entry-test--teardown))))
 
-(ert-deftest organism-entry-test-element-test ()
+(ert-deftest organism-entry-test-element ()
   "Test basic organism-entry-element functionality."
   (let ((file-id (org-id-uuid))
         (heading-id (org-id-uuid))
@@ -197,7 +197,7 @@
       ;; Cleanup
       (organism-entry-test--teardown))))
 
-(ert-deftest organism-entry-test-element-caching-test ()
+(ert-deftest organism-entry-test-element-caching ()
   "Test caching in organism-entry-element."
   (let ((file-id (org-id-uuid))
         (file-path nil))
@@ -227,7 +227,7 @@
 
 ;;; Content Extraction Tests
 
-(ert-deftest organism-entry-test-tags-test ()
+(ert-deftest organism-entry-test-tags ()
   "Test organism-entry tag handling."
   (let ((file-id (org-id-uuid))
         (file-path nil))
@@ -251,7 +251,7 @@
       ;; Cleanup
       (organism-entry-test--teardown))))
 
-(ert-deftest organism-entry-test-tags-caching-test ()
+(ert-deftest organism-entry-test-tags-caching ()
   "Test organism-entry refreshing file tags."
   (let ((file-id (org-id-uuid))
         (file-path nil))
@@ -283,7 +283,7 @@
       ;; Cleanup
       (organism-entry-test--teardown))))
 
-(ert-deftest organism-entry-test-links-test ()
+(ert-deftest organism-entry-test-links ()
   "Test organism-entry link extraction."
   (let ((file-id (org-id-uuid))
         (target-id-1 (org-id-uuid))
@@ -326,7 +326,7 @@
 
 ;;; Refresh and Caching Tests
 
-(ert-deftest organism-entry-test-link-caching-test ()
+(ert-deftest organism-entry-test-link-caching ()
   "Test caching in organism-entry-links."
   (let ((file-id (org-id-uuid))
         (file-path nil))
@@ -360,7 +360,7 @@
       ;; Cleanup
       (organism-entry-test--teardown))))
 
-(ert-deftest organism-entry-test-link-cache-invalidation-test ()
+(ert-deftest organism-entry-test-link-cache-invalidation ()
   "Test link cache invalidation on file changes."
   (let ((file-id (org-id-uuid))
          (file-path nil))
@@ -392,7 +392,7 @@
       ;; Cleanup
       (organism-entry-test--teardown))))
 
-(ert-deftest organism-entry-test-refresh-test ()
+(ert-deftest organism-entry-test-refresh ()
   "Test organism-entry refreshing."
   (let ((file-id (org-id-uuid))
         (file-path nil))

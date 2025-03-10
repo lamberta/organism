@@ -80,7 +80,7 @@
 
 ;;; Basic Graph Tests
 
-(ert-deftest organism-graph-test-initialization-test ()
+(ert-deftest organism-graph-test-initialization ()
   "Test graph initialization and cleanup."
   (let ((old-org-directory org-directory)
         (old-organism-directory organism-directory))
@@ -103,7 +103,7 @@
       (setq organism-directory old-organism-directory)
       (organism-graph-test--teardown))))
 
-(ert-deftest organism-graph-test-build-test ()
+(ert-deftest organism-graph-test-build ()
   "Test building the organism graph."
   (let ((old-org-directory org-directory)
         (old-organism-directory organism-directory)
@@ -161,7 +161,7 @@
                       id2 "File2" "Target file")))
     (list file1-path file2-path)))
 
-(ert-deftest organism-graph-test-update-file-test ()
+(ert-deftest organism-graph-test-update-file ()
   "Test updating entries when a file changes."
   (let ((old-org-directory org-directory)
         (old-organism-directory organism-directory)
@@ -201,7 +201,7 @@
       (setq organism-directory old-organism-directory)
       (organism-graph-test--teardown))))
 
-(ert-deftest organism-graph-test-broken-links-test ()
+(ert-deftest organism-graph-test-broken-links ()
   "Test handling of broken links."
   (let ((old-org-directory org-directory)
         (old-organism-directory organism-directory)
@@ -230,7 +230,7 @@
       (setq organism-directory old-organism-directory)
       (organism-graph-test--teardown))))
 
-(ert-deftest organism-graph-test-heading-entries-test ()
+(ert-deftest organism-graph-test-heading-entries ()
   "Test entries in headings."
   (let ((old-org-directory org-directory)
         (old-organism-directory organism-directory)
@@ -275,7 +275,7 @@
       (setq organism-directory old-organism-directory)
       (organism-graph-test--teardown))))
 
-(ert-deftest organism-graph-test-linked-entries-test ()
+(ert-deftest organism-graph-test-linked-entries ()
   "Test organism-graph-linked-entries function."
   (let ((old-org-directory org-directory)
         (old-organism-directory organism-directory)

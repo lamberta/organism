@@ -51,12 +51,12 @@
 
 ;;; Test Cases
 
-(ert-deftest organism-utils-test-debug-function-test ()
+(ert-deftest organism-utils-test-debug-function ()
   "Test that organism-debug executes without errors."
   (should (progn (organism-debug "Test message") t))
   (should (progn (organism-debug "Test message") t)))
 
-(ert-deftest organism-utils-test-check-type-test ()
+(ert-deftest organism-utils-test-check-type ()
   "Test organism-check-type function."
   ;; Valid types
   (should-not (organism-check-type "test" 'string))
@@ -73,7 +73,7 @@
     (wrong-type-argument
       (should (string-match-p "test-arg" (error-message-string err))))))
 
-(ert-deftest organism-utils-test-get-ids-in-file-test ()
+(ert-deftest organism-utils-test-get-ids-in-file ()
   "Test organism-get-ids-in-file function."
   (unwind-protect
     (progn
@@ -104,7 +104,7 @@
         (should-not (organism-get-ids-in-file "/nonexistent/file"))))
     (organism-utils-test--teardown)))
 
-(ert-deftest organism-utils-test-get-files-with-ids-test ()
+(ert-deftest organism-utils-test-get-files-with-ids ()
   "Test organism-get-files-with-ids function."
   (unwind-protect
     (progn
