@@ -416,5 +416,83 @@
       ;; Cleanup
       (organism-entry-test--teardown))))
 
+(ert-deftest organism-entry-test-modified-buffer-refresh ()
+  "Test that modified buffers are not refreshed from disk.
+Verifies that:
+1. Unsaved changes are preserved during refresh
+2. Entry data reflects saved state, not modified buffer state
+3. Refresh works normally after buffer is saved"
+  (let ((file-id (org-id-uuid))
+        (file-path nil))
+    (unwind-protect
+        (progn
+          (organism-entry-test--setup)
+          ;; Create initial file
+          (setq file-path (organism-entry-test--create-file
+                           "ModTest.org"
+                           (format ":PROPERTIES:\n:ID:       %s\n:END:\n#+TITLE: Initial\n\nContent" file-id)))
+          (organism-entry-test--register-id file-id file-path)
+
+          ;; Create entry and verify initial state
+          (let ((entry (make-instance 'organism-entry :id file-id)))
+            (should (string= (organism-entry-title entry) "Initial"))
+
+            ;; Open the file and make changes without saving
+            (let ((buffer (find-file-noselect file-path)))
+              (with-current-buffer buffer
+                ;; Verify file content before making changes
+                (should (search-forward "#+TITLE: Initial" nil t))
+                (beginning-of-line)
+
+                ;; Make changes
+                (delete-region (point) (line-end-position))
+                (insert "#+TITLE: Modified Buffer")
+                (set-buffer-modified-p t) ;; Mark as modified
+
+                ;; Now try to refresh the entry
+                (organism-entry--refresh entry)
+
+                ;; The title should still be Initial, not Modified Buffer
+                ;; because the buffer was modified and refresh should skip it
+                (should (string= (organism-entry-title entry) "Initial"))
+
+                ;; Now save the file
+                (save-buffer)
+
+                ;; After saving, refresh should update the entry
+                (organism-entry--refresh entry)
+                (should (string= (organism-entry-title entry) "Modified Buffer"))
+
+                ;; Clean up
+                (kill-buffer))))
+
+          ;; Test that unsaved changes in an existing buffer are preserved
+          (let ((buffer (find-file-noselect file-path))
+                (entry (make-instance 'organism-entry :id file-id)))
+            (with-current-buffer buffer
+              ;; Verify content before changes
+              (should (search-forward "#+TITLE: Modified Buffer" nil t))
+              (beginning-of-line)
+
+              ;; Make changes
+              (delete-region (point) (line-end-position))
+              (insert "#+TITLE: Second Modification")
+              (set-buffer-modified-p t)
+
+              ;; Get the modified buffer text for comparison
+              (let ((buffer-text (buffer-string)))
+                ;; Try to refresh the entry
+                (organism-entry--refresh entry)
+
+                ;; Buffer should still have our unsaved changes
+                (should (string= (buffer-string) buffer-text))
+
+                ;; Clean up
+                (set-buffer-modified-p nil)
+                (kill-buffer)))))
+
+      ;; Cleanup
+      (organism-entry-test--teardown))))
+
 (provide 'organism-entry-test)
 ;;; organism-entry-test.el ends here

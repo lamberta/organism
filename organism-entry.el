@@ -112,16 +112,23 @@ execution. Return nil if entry's location cannot be found."
        (unwind-protect
          (save-excursion
            (with-current-buffer (marker-buffer marker)
-             (when ,refresh
-               (condition-case err
-                 (progn
-                   (revert-buffer t t t)
-                   (org-set-regexps-and-options)  ;; Rebuild tags, todos, etc.
-                   (org-element-cache-reset))     ;; Reset element cache
-                 (error
-                   (organism-debug "Error refreshing buffer: %s" (error-message-string err)))))
-             (goto-char marker)
-             ,@body))
+             ;; If refresh requested and buffer modified, abort operation completely
+             (if (and ,refresh (buffer-modified-p))
+               (progn
+                 (organism-debug "Buffer %s has unsaved changes, skipping refresh" (buffer-name))
+                 nil) ; Return nil to indicate operation was aborted
+               ;; Otherwise proceed with refresh if needed and execute body
+               (when ,refresh
+                 (condition-case err
+                   (progn
+                     (revert-buffer t t t)
+                     (org-set-regexps-and-options)
+                     (org-element-cache-reset))
+                   (error
+                     (organism-debug "Error refreshing buffer: %s" (error-message-string err)))))
+
+               (goto-char marker)
+               ,@body)))
          (move-marker marker nil)))))
 
 ;;; Initialization and Refresh
@@ -131,7 +138,8 @@ execution. Return nil if entry's location cannot be found."
   (organism-entry--refresh entry))
 
 (cl-defmethod organism-entry--refresh ((entry organism-entry))
-  "Refresh ENTRY data from its ID location in org files."
+  "Refresh ENTRY data from its ID location in org files.
+Returns t if successful, nil if refresh was skipped or failed."
   (organism-with-entry-location entry :refresh
     (let ((element (org-element-at-point))
           (current-file (buffer-file-name))
@@ -153,8 +161,8 @@ execution. Return nil if entry's location cannot be found."
         ;; Set properties
         (setf properties (org-entry-properties))
         ;; Set node label
-        (setf (node-label entry) (organism-entry-label entry)))))
-  entry)
+        (setf (node-label entry) (organism-entry-label entry)))
+      t)))
 
 (cl-defmethod organism-entry--refresh :after ((entry organism-entry))
   "Clear caches after refreshing entry."

@@ -64,6 +64,25 @@ Used to avoid infinite loops when updating interconnected entries.")
            (not (string-match-p organism-exclude-file-regexp file)))
        (file-in-directory-p file organism-directory)))
 
+(defun organism-graph--process-entries (action-message)
+  "Process all entries in the graph, refreshing and connecting them.
+ACTION-MESSAGE is used in the debug output."
+  (let ((entry-count 0)
+        (connection-count 0)
+        (skipped-count 0))
+    ;; Refresh each entry
+    (dolist (entry (organism-graph-entries))
+      (if (organism-entry--refresh entry)
+        (cl-incf entry-count)
+        (cl-incf skipped-count))
+      ;; Update connections
+      (when-let ((connections (organism-graph--try-update-connections entry)))
+        (cl-incf connection-count)))
+
+    (organism-debug "%s: %d entries (%d skipped) with %d connections"
+      action-message entry-count skipped-count connection-count)
+    (list entry-count skipped-count connection-count)))
+
 (defun organism-graph--build ()
   "Build the graph by adding entries for all IDs in org-id-locations."
   (organism-debug "Building graph from org-id-locations with %d entries"
@@ -75,14 +94,18 @@ Used to avoid infinite loops when updating interconnected entries.")
                (when (organism-graph--file-matches-criteria-p file)
                  (organism-graph--try-create-entry id)))
       org-id-locations)
+    ;; Process entries
+    (organism-graph--process-entries "Graph build complete")))
 
-    ;; Add edges between entries
-    (dolist (entry (organism-graph-entries))
-      (organism-graph--try-update-connections entry))
+(defun organism-graph-refresh ()
+  "Refresh all entries in the organism graph, clear caches, etc."
+  (unless organism-graph
+    (user-error "Organism graph not started"))
 
-    (organism-debug "Graph build complete: %d entries, %d edges"
-      (graph-node-count organism-graph)
-      (graph-edge-count organism-graph))))
+  (organism-debug "Refreshing organism graph...")
+  (let ((organism-graph--processing t))
+    (organism-graph--process-entries "Refreshed"))
+  t)
 
 (defun organism-graph-start ()
   "Initialize and build the organism graph from org files."
@@ -114,27 +137,6 @@ nil if there was no graph to clean up."
       (graph-node-count organism-graph))
     (setq organism-graph nil)
     t))
-
-(defun organism-graph-refresh ()
-  "Refresh all entries in the organism graph, clear caches, etc."
-  (unless organism-graph
-    (user-error "Organism graph not started"))
-
-  (organism-debug "Refreshing organism graph...")
-  (let ((organism-graph--processing t)
-        (entry-count 0)
-        (connection-count 0))
-    ;; Refresh each entry
-    (dolist (entry (organism-graph-entries))
-      (organism-entry--refresh entry)
-      (cl-incf entry-count)
-      ;; Update its connections
-      (when-let ((connections (organism-graph--try-update-connections entry)))
-        (cl-incf connection-count connections)))
-
-    (organism-debug "Refreshed %d entries with %d connections"
-      entry-count connection-count))
-  t)
 
 (defun organism-graph--try-create-entry (id)
   "Try to create an entry with ID, handling any errors.

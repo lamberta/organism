@@ -2,7 +2,7 @@
 
 ;; Author: Billy Lamberta
 ;; URL: https://github.com/lamberta/organism
-;; Version: 0.0.1
+;; Version: 0.0.2
 ;; Created: Mar 2025
 ;; Updated: Mar 2025
 ;; Package-Requires: ((emacs "27.2") (graphael "0.1.1"))
