@@ -32,6 +32,11 @@
 ;; where files and headings with IDs become entries in a graph, and links
 ;; between them become edges.
 ;;
+;; Key features:
+;; - Create and visualize a graph of your org-mode notes
+;; - Find and visit entries using organism-find
+;; - Insert links to entries with organism-link
+;;
 ;; To use organism, enable the minor mode with M-x organism-mode
 ;; or add (organism-mode 1) to your configuration.
 
@@ -46,6 +51,9 @@
 (require 'organism-entry)
 (require 'organism-graph)
 (require 'organism-display)
+(require 'organism-capture)
+
+;;; Customization
 
 (defgroup organism nil
   "Graph-based org-mode note management."
@@ -79,10 +87,25 @@ This is the root directory where organism will scan for org files."
   :type 'boolean
   :group 'organism)
 
-(defvar organism-mode-map
-  (let ((map (make-sparse-keymap)))
-    map)
-  "Keymap for Organism mode.")
+(defcustom organism-capture-templates
+  '(("d" "Organism entry" plain (file)
+     ":PROPERTIES:\n:ID:       %i\n:CREATED:  %t\n:END:\n#+TITLE: %T\n\n%?"))
+  "Templates for organism entry capture. Defaults to first item.
+Each template should be a list in the `org-capture-templates' format.
+The template body supports additional format specifiers:
+- %i: Entry ID (UUID)
+- %t: Creation timestamp
+- %T: Title of the entry
+See `org-capture-templates' for details on template structure."
+  :group 'organism
+  :type '(repeat (list :tag "Capture template"
+                   (string :tag "Keys")
+                   (string :tag "Description")
+                   (symbol :tag "Type")
+                   (list :tag "Target")
+                   (string :tag "Template body"))))
+
+;;; Mode Definition
 
 ;;;###autoload
 (define-minor-mode organism-mode
@@ -98,17 +121,18 @@ maintained, enabling analysis and navigation through the note structure."
   :lighter " Organism"
   :group 'organism
   :global t
-  :keymap organism-mode-map
   (if organism-mode
     (progn
-      (organism-debug "Initializing organism graph...")
-      (organism-graph-initialize)
+      (organism-debug "Create the organism graph...")
+      (organism-graph-start)
       (when organism-auto-update
         (add-hook 'after-save-hook #'organism-after-save-hook)))
     (progn
-      (organism-debug "Cleaning up organism graph...")
-      (organism-graph-cleanup)
+      (organism-debug "Remove the organism graph...")
+      (organism-graph-stop)
       (remove-hook 'after-save-hook #'organism-after-save-hook))))
+
+;;; Hook Functions
 
 (defun organism-after-save-hook ()
   "Update the organism graph when a relevant file is saved."

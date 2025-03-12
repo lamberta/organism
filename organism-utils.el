@@ -34,13 +34,20 @@
 ;; Declare free variable defined in main file.
 (defvar organism-directory)
 
-;;;; Debugging Utilities
+;;;; Utilities
 
 (defun organism-debug (format-string &rest args)
   "Output debug message if `organism-debug-enabled' is non-nil.
 FORMAT-STRING and ARGS are passed to `message'."
   (when (bound-and-true-p organism-debug-enabled)
     (apply #'message (concat "Organism: " format-string) args)))
+
+(defun organism-format-timestamp (timestamp &optional format-string)
+  "Convert TIMESTAMP to a formatted date string.
+TIMESTAMP should be in ISO 8601 format or any supported by `date-to-time`."
+  (let ((fmt-string (or format-string "%b %e %Y %l:%M%P"))
+        (time (date-to-time timestamp)))
+    (format-time-string fmt-string time)))
 
 ;;;; Type Checking
 

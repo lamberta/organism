@@ -38,6 +38,25 @@ Load the packages in your `.emacs` configuration:
 Start the minor mode with `M-x organism-mode` or add
 `(organism-mode 1)` to your configuration.
 
+### Create and find entries
+
+Entries are Org files or headings that have an ID property and stored
+in `organism-directory` (which defaults to `org-directory`). Use
+`org-id-get-create` to add an ID property. Links between entry IDs are
+how nodes connect in the Organism graph.
+
+Inspired by [org-roam](https://github.com/org-roam/org-roam), there
+are several commands for working with entries:
+
+- `organism-find`: Find an existing entry or create a new one.
+- `organism-link`: Insert a link to an entry. Create the entry, if needed.
+- `organism-link-immediate`: Create a new entry and insert a link
+  without editing.
+
+Organism uses annotations to improve its minibuffer completion. For a
+better experience, install packages such as `vertico`, `marginalia`,
+and `orderless`.
+
 ## Developer commands
 
 Byte-compile Elisp files for compilation warnings:

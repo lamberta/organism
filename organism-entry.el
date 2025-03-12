@@ -158,9 +158,10 @@ execution. Return nil if entry's location cannot be found."
 
 (cl-defmethod organism-entry--refresh :after ((entry organism-entry))
   "Clear caches after refreshing entry."
+  (graph-node-attr-put entry :annotation nil)
+  (graph-node-attr-put entry :cached-element nil)
   (graph-node-attr-put entry :links-entry-only nil)
-  (graph-node-attr-put entry :links-with-subtree nil)
-  (graph-node-attr-put entry :cached-element nil))
+  (graph-node-attr-put entry :links-with-subtree nil))
 
 ;;; Predicates
 

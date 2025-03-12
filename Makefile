@@ -6,12 +6,14 @@ GRAPHAEL_PATH = ~/src/lamberta/graphael
 LIB_FILES = -l organism-utils.el \
 						-l organism-entry.el \
 						-l organism-graph.el \
+						-l organism-capture.el \
 						-l organism-display.el \
 						-l organism.el
 
-TEST_FILES = -l organism-utils-test.el \
-						 -l organism-entry-test.el \
-						 -l organism-graph-test.el
+TEST_FILES = -l organism-entry-test.el \
+						 -l organism-capture-test.el \
+						 -l organism-graph-test.el \
+						 -l organism-utils-test.el
 
 all:
 	$(EMACS) --quick --batch \
