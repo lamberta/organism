@@ -50,7 +50,7 @@
 (require 'organism-utils)
 (require 'organism-entry)
 (require 'organism-graph)
-(require 'organism-display)
+(require 'organism-stats)
 (require 'organism-capture)
 
 ;;; Customization

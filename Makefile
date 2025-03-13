@@ -7,7 +7,7 @@ LIB_FILES = -l organism-utils.el \
 						-l organism-entry.el \
 						-l organism-graph.el \
 						-l organism-capture.el \
-						-l organism-display.el \
+						-l organism-stats.el \
 						-l organism.el
 
 TEST_FILES = -l organism-entry-test.el \
