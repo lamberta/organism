@@ -3,7 +3,8 @@ EMACS ?= emacs
 
 GRAPHAEL_PATH = ~/src/lamberta/graphael
 
-LIB_FILES = -l organism-utils.el \
+LIB_FILES = -l organism-defs.el \
+						-l organism-utils.el \
 						-l organism-entry.el \
 						-l organism-graph.el \
 						-l organism-capture.el \

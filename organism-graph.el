@@ -36,19 +36,15 @@
 (require 'org)
 (require 'org-id)
 (require 'graphael-core)
+(require 'organism-defs)
 (require 'organism-utils)
 (require 'organism-entry)
 
-;;; Variables
+;; Forward declaration for free variables
 
-;; Declare free variables defined in main file.
 (defvar organism-directory)
-(defvar organism-exclude-file-regexp)
-(defvar organism-file-match)
 
-(defvar organism-graph nil
-  "The global organism graph object.
-This is the in-memory representation of entries and their connections.")
+;;; Variables
 
 (defvar organism-graph--processing nil
   "Flag to prevent recursive graph processing during updates.
@@ -56,13 +52,149 @@ Used to avoid infinite loops when updating interconnected entries.")
 
 ;;; Core Graph Functions
 
-(defun organism-graph--file-matches-criteria-p (file)
-  "Return t if FILE should be included in the organism graph."
-  (and (file-exists-p file)
-       (string-match-p organism-file-match file)
-       (or (null organism-exclude-file-regexp)
-           (not (string-match-p organism-exclude-file-regexp file)))
-       (file-in-directory-p file organism-directory)))
+(defun organism-graph--handle-removed-entries (stats)
+  "Remove entries whose files no longer exist.
+Updates STATS with removal information."
+  (let ((entries-to-remove nil)
+        (edges-removed 0))
+    ;; First identify entries to remove
+    (dolist (entry (organism-graph-entries))
+      (let ((file (organism-entry-property entry "FILE")))
+        (when (or (not file)
+                  (not (file-exists-p file))
+                  (not (organism-file-matches-criteria-p file)))
+          (push entry entries-to-remove))))
+
+    ;; Then remove them
+    (dolist (entry entries-to-remove)
+      (let* ((node-id (node-id entry))  ;; Use proper variable name
+             (file (organism-entry-property entry "FILE"))
+             (title (organism-entry-title entry))
+             (edge-count (+ (length (graph-node-edges organism-graph node-id))
+                            (length (graph-node-edges organism-graph node-id t)))))
+        ;; Track edge count before removal
+        (cl-incf edges-removed edge-count)
+
+        ;; Remove the entry
+        (graph-node-remove organism-graph entry)
+        (organism-debug "Removed entry %s (%s) - file no longer exists: %s"
+          node-id (or title "untitled") (or file "unknown"))
+        (cl-incf (organism-graph-stats-entries-removed stats))))
+
+    ;; Update edge count in stats
+    (cl-incf (organism-graph-stats-edges-removed stats) edges-removed)
+
+    (when (> (organism-graph-stats-entries-removed stats) 0)
+      (organism-debug "Removed %d entries with %d edges for nonexistent files"
+        (organism-graph-stats-entries-removed stats)
+        edges-removed))))
+
+(defun organism-graph--scan-files ()
+  "Scan organism directory for org files with IDs and update org-id-locations."
+  (let ((files (seq-filter #'organism-file-matches-criteria-p
+                 (directory-files-recursively organism-directory "\\.org$"))))
+    (organism-debug "Scanning %d matching org files for IDs" (length files))
+    (org-id-update-id-locations files)))
+
+(defun organism-graph--process-entry (entry stats)
+  "Process ENTRY, update its connections, and update STATS."
+  (if (condition-case err
+        (progn
+          ;; Refresh the entry's data
+          (organism-entry--refresh entry)
+
+          ;; Update connections and track edge count
+          (let* ((old-edges (graph-node-edges organism-graph (node-id entry)))
+                 (old-edge-ids (mapcar #'edge-id old-edges))
+                 (new-edge-ids (progn
+                                 (organism-graph-update-connections entry)
+                                 (mapcar #'edge-id
+                                   (graph-node-edges organism-graph (node-id entry))))))
+            ;; Count truly new edges (not just updates)
+            (let ((added-count 0)
+                  (removed-count 0))
+              (dolist (id new-edge-ids)
+                (unless (member id old-edge-ids)
+                  (cl-incf added-count)))
+              (dolist (id old-edge-ids)
+                (unless (member id new-edge-ids)
+                  (cl-incf removed-count)))
+
+              ;; Update stats with actual changes
+              (cl-incf (organism-graph-stats-edges-added stats) added-count)
+              (cl-incf (organism-graph-stats-edges-removed stats) removed-count)))
+          t)
+        (error
+          (organism-debug "Error processing entry %s: %s"
+            (node-id entry) (error-message-string err))
+          (setf (organism-graph-stats-success stats) nil)
+          nil))
+    ;; Success
+    (cl-incf (organism-graph-stats-entries-processed stats))
+    ;; Failed
+    (cl-incf (organism-graph-stats-entries-skipped stats))))
+
+(defun organism-graph-rescan ()
+  "Refresh the organism graph to match the filesystem state.
+Returns t if sync was complete, nil if some entries couldn't be processed."
+  (unless organism-graph
+    (user-error "Organism graph not started"))
+
+  (let ((organism-graph--processing t)
+        (start-time (current-time))
+        (stats (make-organism-graph-stats))
+        (initial-edge-count (graph-edge-count organism-graph)))
+
+    (organism-debug "Starting full graph refresh...")
+
+    ;; 1. Remove entries for nonexistent files
+    (organism-graph--handle-removed-entries stats)
+    ;; 2. Scan for files and update ID locations
+    (organism-graph--scan-files)
+    ;; 3. Add entries for new IDs
+    (maphash (lambda (id file)
+               (when (and (organism-file-matches-criteria-p file)
+                          (not (graph-node-p organism-graph id)))
+                 (condition-case err
+                   (progn
+                     (organism-graph-get-or-create-entry id)
+                     (cl-incf (organism-graph-stats-entries-added stats)))
+                   (error
+                     (organism-debug "Error adding entry for ID %s: %s"
+                       id (error-message-string err))
+                     (setf (organism-graph-stats-success stats) nil)))))
+      org-id-locations)
+    ;; 4. Process and update all entries
+    (dolist (entry (organism-graph-entries))
+      (if (condition-case err
+            (progn
+              (organism-entry--refresh entry)
+              (organism-graph-update-connections entry)
+              t)
+            (error
+              (organism-debug "Error processing entry %s: %s"
+                (node-id entry) (error-message-string err))
+              (setf (organism-graph-stats-success stats) nil)
+              nil))
+        (cl-incf (organism-graph-stats-entries-processed stats))
+        (cl-incf (organism-graph-stats-entries-skipped stats))))
+    ;; Calculate net edge changes
+    (let ((edge-difference (- (graph-edge-count organism-graph)
+                              initial-edge-count)))
+      (when (not (zerop edge-difference))
+        (if (> edge-difference 0)
+          (setf (organism-graph-stats-edges-added stats) edge-difference)
+          (setf (organism-graph-stats-edges-removed stats)
+            (abs edge-difference)))))
+
+    ;; Set elapsed time in stats
+    (setf (organism-graph-stats-elapsed-time stats)
+      (float-time (time-since start-time)))
+
+    ;; Display a descriptive message
+    (message "%s" (organism-utils-format-status stats "Graph refresh"))
+    ;; Return success status
+    (organism-graph-stats-success stats)))
 
 (defun organism-graph--process-entries (action-message)
   "Process all entries in the graph, refreshing and connecting them.
@@ -91,21 +223,11 @@ ACTION-MESSAGE is used in the debug output."
   (let ((organism-graph--processing t))
     ;; Add all entries to the graph
     (maphash (lambda (id file)
-               (when (organism-graph--file-matches-criteria-p file)
+               (when (organism-file-matches-criteria-p file)
                  (organism-graph--try-create-entry id)))
       org-id-locations)
     ;; Process entries
     (organism-graph--process-entries "Graph build complete")))
-
-(defun organism-graph-refresh ()
-  "Refresh all entries in the organism graph, clear caches, etc."
-  (unless organism-graph
-    (user-error "Organism graph not started"))
-
-  (organism-debug "Refreshing organism graph...")
-  (let ((organism-graph--processing t))
-    (organism-graph--process-entries "Refreshed"))
-  t)
 
 (defun organism-graph-start ()
   "Initialize and build the organism graph from org files."
@@ -113,20 +235,47 @@ ACTION-MESSAGE is used in the debug output."
     (organism-graph-stop))
 
   (organism-debug "Creating new organism graph")
-  (setq organism-graph (make-instance 'graph))
+  (let ((start-time (current-time))
+        (stats (make-organism-graph-stats)))
 
-  (org-id-locations-load)  ; Load existing ID locations
+    (setq organism-graph (make-instance 'graph))
+    (org-id-locations-load)  ; Load existing ID locations
 
-  ;; Update ID locations by scanning matching org files
-  (organism-debug "Scanning for IDs in %s" organism-directory)
-  (let ((files (seq-filter #'organism-graph--file-matches-criteria-p
-                 (directory-files-recursively organism-directory "\\.org$"))))
-    (organism-debug "Found %d matching org files to scan" (length files))
-    (org-id-update-id-locations files))
+    ;; Update ID locations by scanning matching org files
+    (organism-debug "Scanning for IDs in %s" organism-directory)
+    (let ((files (seq-filter #'organism-file-matches-criteria-p
+                   (directory-files-recursively organism-directory "\\.org$"))))
+      (organism-debug "Found %d matching org files to scan" (length files))
+      (org-id-update-id-locations files))
 
-  ;; Build the graph from entry IDs
-  (organism-graph--build)
-  organism-graph)
+    ;; Build the graph from entry IDs
+    (maphash (lambda (id file)
+               (when (organism-file-matches-criteria-p file)
+                 (when (organism-graph--try-create-entry id)
+                   (cl-incf (organism-graph-stats-entries-added stats)))))
+      org-id-locations)
+
+    ;; Process all entries and track connections
+    (dolist (entry (organism-graph-entries))
+      (if (condition-case err
+            (progn
+              (organism-entry--refresh entry)
+              (organism-graph-update-connections entry)
+              t)
+            (error
+              (organism-debug "Error processing entry %s: %s"
+                (node-id entry) (error-message-string err))
+              (setf (organism-graph-stats-success stats) nil)
+              nil))
+        (cl-incf (organism-graph-stats-entries-processed stats))
+        (cl-incf (organism-graph-stats-entries-skipped stats))))
+
+    ;; Set elapsed time in stats
+    (setf (organism-graph-stats-elapsed-time stats)
+          (float-time (time-since start-time)))
+
+    (message "%s" (organism-utils-format-status stats "Graph build"))
+    organism-graph))
 
 (defun organism-graph-stop ()
   "Clean up the organism graph and release resources.

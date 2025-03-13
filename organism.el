@@ -105,7 +105,7 @@ See `org-capture-templates' for details on template structure."
                    (list :tag "Target")
                    (string :tag "Template body"))))
 
-;;; Mode Definition
+;;; Mode
 
 ;;;###autoload
 (define-minor-mode organism-mode
@@ -132,7 +132,7 @@ maintained, enabling analysis and navigation through the note structure."
       (organism-graph-stop)
       (remove-hook 'after-save-hook #'organism-after-save-hook))))
 
-;;; Hook Functions
+;;; Hooks
 
 (defun organism-after-save-hook ()
   "Update the organism graph when a relevant file is saved."
@@ -146,6 +146,27 @@ maintained, enabling analysis and navigation through the note structure."
           (file-in-directory-p (buffer-file-name) organism-directory))
     (organism-debug "Updating graph for file: %s" (buffer-file-name))
     (organism-graph-update-file (buffer-file-name))))
+
+;;; User functions
+
+;;;###autoload
+(defun organism-rescan ()
+  "Rescan all files in `organism-directory' and update the graph.
+Updates the graph to match the filesystem, which is the source of truth:
+- Adds entries for new files with IDs
+- Removes entries for files that no longer exist
+- Updates all entries with current file content
+
+This is useful after adding, removing, or modifying files outside of Emacs."
+  (interactive)
+  (unless organism-mode
+    (user-error "Organism mode is not enabled"))
+
+  (unless (file-exists-p organism-directory)
+    (user-error "Organism directory does not exist: %s" organism-directory))
+
+  (message "Rescanning org files in %s..." organism-directory)
+  (organism-graph-rescan))
 
 (provide 'organism)
 ;;; organism.el ends here

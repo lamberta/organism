@@ -152,8 +152,8 @@
       (setq organism-directory old-organism-directory)
       (organism-graph-test--teardown))))
 
-(ert-deftest organism-graph-test-refresh ()
-  "Test refreshing the entire graph."
+(ert-deftest organism-graph-test-rescan ()
+  "Test rescanning the entire graph."
   (let ((old-org-directory org-directory)
         (old-organism-directory organism-directory)
         (id1 (org-id-uuid))
@@ -177,11 +177,12 @@
 
         ;; Modify file1 to add a link to file2
         (with-temp-file file-path
-          (insert (format ":PROPERTIES:\n:ID: %s\n:END:\n#+TITLE: File1\n\nNow links to [[id:%s][File2]]."
+          (insert (format
+                    ":PROPERTIES:\n:ID: %s\n:END:\n#+TITLE: File1\n\nNow links to [[id:%s][File2]]."
                     id1 id2)))
 
         ;; Refresh entire graph
-        (organism-graph-refresh)
+        (organism-graph-rescan)
 
         ;; Check that edge was created during refresh
         (should (= (graph-edge-count organism-graph) 1))
@@ -190,6 +191,53 @@
           (let ((linked (organism-graph-linked-entries node1)))
             (should (= (length linked) 1))
             (should (equal (node-id (car linked)) id2)))))
+      ;; Cleanup
+      (setq org-directory old-org-directory)
+      (setq organism-directory old-organism-directory)
+      (organism-graph-test--teardown))))
+
+(ert-deftest organism-graph-test-file-removal ()
+  "Test detection and removal of deleted files."
+  (let ((old-org-directory org-directory)
+        (old-organism-directory organism-directory)
+        (id1 (org-id-uuid))
+        (id2 (org-id-uuid))
+        (file1-path nil)
+        (file2-path nil))
+    (unwind-protect
+      (progn
+        (organism-graph-test--setup)
+        ;; Set directories to test directory
+        (setq org-directory organism-graph-test--temp-dir)
+        (setq organism-directory organism-graph-test--temp-dir)
+
+        ;; Create test files with links between them
+        (setq file1-path (organism-graph-test--create-org-file
+                           id1 "File1"
+                           (format "Links to [[id:%s][File2]]." id2)))
+        (setq file2-path (organism-graph-test--create-org-file
+                           id2 "File2"
+                           (format "Links back to [[id:%s][File1]]." id1)))
+
+        ;; Start graph and verify initial state
+        (organism-graph-start)
+        (should (= (graph-node-count organism-graph) 2))
+        (should (= (graph-edge-count organism-graph) 2))
+
+        (should (file-exists-p file1-path))
+        (should (file-exists-p file2-path))
+        ;; Delete one file
+        (delete-file file2-path)
+
+        ;; Refresh graph to detect the deletion
+        (organism-graph-rescan)
+
+        ;; Verify that the node and its connections were removed
+        (should (= (graph-node-count organism-graph) 1))
+        (should (= (graph-edge-count organism-graph) 0))
+        (should (graph-node-p organism-graph id1))
+        (should-not (graph-node-p organism-graph id2)))
+
       ;; Cleanup
       (setq org-directory old-org-directory)
       (setq organism-directory old-organism-directory)
@@ -227,7 +275,8 @@
         (should (= (graph-edge-count organism-graph) 0))
         ;; Now modify file1 to add a link to file2
         (with-temp-file file-path
-          (insert (format ":PROPERTIES:\n:ID: %s\n:END:\n#+TITLE: File1\n\nNow links to [[id:%s][File2]]."
+          (insert (format
+                    ":PROPERTIES:\n:ID: %s\n:END:\n#+TITLE: File1\n\nNow links to [[id:%s][File2]]."
                     id1 id2)))
         ;; Update file and check for changes
         (organism-graph-update-file file-path)
@@ -287,8 +336,8 @@
         (setq org-directory organism-graph-test--temp-dir)
         (setq organism-directory organism-graph-test--temp-dir)
         ;; Create test file with headings - ONE LINK ONLY
-        (let ((file-path (organism-graph-test--create-org-file
-                           file-id "HeadingTest"
+        (let ((file-path (organism-graph-test--create-org-file file-id
+                           "HeadingTest"
                            (format "* Heading 1\n  :PROPERTIES:\n  :ID: %s\n  :END:\n  Content 1\n\n* Heading 2\n  :PROPERTIES:\n  :ID: %s\n  :END:\n  Content 2\n  Links to heading one: [[id:%s][Heading 1]]."
                              heading1-id heading2-id heading1-id))))
           ;; Manually register heading IDs
@@ -362,6 +411,52 @@
             (should (cl-every (lambda (entry)
                                 (member (node-id entry) (list id1 id2)))
                       incoming)))))
+      ;; Cleanup
+      (setq org-directory old-org-directory)
+      (setq organism-directory old-organism-directory)
+      (organism-graph-test--teardown))))
+
+(ert-deftest organism-graph-test-stats ()
+  "Test statistics tracking during graph operations."
+  (let ((old-org-directory org-directory)
+        (old-organism-directory organism-directory)
+        (id1 (org-id-uuid))
+        (id2 (org-id-uuid))
+        (id3 (org-id-uuid))
+        (file-path nil))
+    (unwind-protect
+      (progn
+        (organism-graph-test--setup)
+        ;; Set directories to test directory
+        (setq org-directory organism-graph-test--temp-dir)
+        (setq organism-directory organism-graph-test--temp-dir)
+
+        ;; Create test files with links
+        (setq file-path (organism-graph-test--create-org-file
+                          id1 "File1"
+                          (format "Links to [[id:%s][File2]]." id2)))
+        (organism-graph-test--create-org-file
+          id2 "File2"
+          (format "Links to [[id:%s][File3]]." id3))
+        (organism-graph-test--create-org-file
+          id3 "File3"
+          (format "Links back to [[id:%s][File1]]." id1))
+
+        ;; Start graph
+        (organism-graph-start)
+
+        ;; Delete one file to test removal tracking
+        (delete-file file-path)
+
+        ;; Create stats struct to capture refresh operations
+        (let ((stats (make-organism-graph-stats)))
+          ;; Update stats with refresh operations
+          (organism-graph--handle-removed-entries stats)
+
+          ;; Check that removal was tracked
+          (should (= (organism-graph-stats-entries-removed stats) 1))
+          (should (> (organism-graph-stats-edges-removed stats) 0))))
+
       ;; Cleanup
       (setq org-directory old-org-directory)
       (setq organism-directory old-organism-directory)

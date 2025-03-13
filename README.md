@@ -57,6 +57,14 @@ Organism uses annotations to improve its minibuffer completion. For a
 better experience, install packages such as `vertico`, `marginalia`,
 and `orderless`.
 
+### Sync
+
+*Organism* uses the file system as the source of truth and builds its
+internal graph representation when you start `organism-mode`. Entries
+are automatically updated when Emacs saves a file. But if a file is
+added, deleted, or modified outside of Emacs, rebuild the graph using
+`organism-rescan`.
+
 ## Developer commands
 
 Byte-compile Elisp files for compilation warnings:
