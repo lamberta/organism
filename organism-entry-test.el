@@ -494,5 +494,43 @@ Verifies that:
       ;; Cleanup
       (organism-entry-test--teardown))))
 
+(ert-deftest organism-entry-test-buffer-cleanup ()
+  "Test that temporary buffers are closed but existing buffers remain open."
+  (let ((file-id (org-id-uuid))
+        (file-path nil))
+    (unwind-protect
+      (progn
+        (organism-entry-test--setup)
+        ;; Create a test file
+        (setq file-path (organism-entry-test--create-org-file
+                          file-id "BufferTest" "Testing buffer cleanup"))
+        (organism-entry-test--register-id file-id file-path)
+
+        ;; Verify no buffer exists for the file yet
+        (should-not (get-file-buffer file-path))
+
+        ;; Create entry and access data (should open the file)
+        (let ((entry (make-instance 'organism-entry :id file-id)))
+          ;; Verify entry was loaded correctly
+          (should (string= (organism-entry-title entry) "BufferTest"))
+
+          ;; Verify that buffer was opened then closed
+          (should-not (get-file-buffer file-path)))
+
+        ;; Now open the buffer manually first
+        (let* ((buffer (find-file-noselect file-path))
+               (entry (make-instance 'organism-entry :id file-id)))
+          ;; Access entry data (should use the existing buffer)
+          (organism-entry-title entry)
+
+          ;; Verify buffer still exists and wasn't closed
+          (should (buffer-live-p buffer))
+          (should (get-file-buffer file-path))
+
+          ;; Clean up
+          (kill-buffer buffer)))
+      ;; Cleanup
+      (organism-entry-test--teardown))))
+
 (provide 'organism-entry-test)
 ;;; organism-entry-test.el ends here

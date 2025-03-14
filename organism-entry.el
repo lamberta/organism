@@ -50,9 +50,6 @@
 ;;   (organism-entry-links entry)          ; All links
 ;;   (organism-entry-links entry "id")     ; Only ID links
 ;;   (organism-entry-links entry nil t))   ; All links including subtree
-;;
-;; The entry maintains a connection to the actual org file, fetching
-;; up-to-date information when needed through `organism-with-entry-location`.
 
 ;;; Code:
 
@@ -63,7 +60,7 @@
 (require 'graphael-core)
 (require 'organism-utils)
 
-;;; Class Definition
+;;; Class definition
 
 (defclass organism-entry (graph-node)
   ((level
@@ -92,46 +89,64 @@
            (node-label entry))
     stream))
 
-;;; Helper Macros
+;;; Utilities
 
-(cl-defmacro organism-with-entry-location (entry &body body &aux (refresh nil))
+(defun organism-entry--cleanup-buffer (buffer existing-buffers)
+  "Close BUFFER if it's not in EXISTING-BUFFERS list.
+Only closes unmodified buffers."
+  (when (and buffer
+             (buffer-live-p buffer)
+             (not (member (buffer-name buffer) existing-buffers))
+             (not (buffer-modified-p buffer)))
+    (kill-buffer buffer)))
+
+(cl-defmacro organism-entry--with-entry-location (entry &body body &aux (refresh nil))
   "Execute BODY at the location of ENTRY in its file.
-Usage: (organism-with-entry-location entry :refresh ...) to reload buffer before
-execution. Return nil if entry's location cannot be found."
+When :refresh is specified, reload the buffer before execution."
   (declare (indent 1) (debug t))
   (when (eq (car body) :refresh)
-    (setq
-      refresh t
-      body (cdr body)))
+    (setq refresh t body (cdr body)))
 
-  `(let ((marker (org-id-find (node-id ,entry) t)))
-     (if (not marker)
-       (progn
-         (organism-debug "Could not find location for ID: %s" (node-id ,entry))
-         nil)
-       (unwind-protect
-         (save-excursion
-           (with-current-buffer (marker-buffer marker)
-             ;; If refresh requested and buffer modified, abort operation completely
-             (if (and ,refresh (buffer-modified-p))
-               (progn
-                 (organism-debug "Buffer %s has unsaved changes, skipping refresh" (buffer-name))
-                 nil) ; Return nil to indicate operation was aborted
-               ;; Otherwise proceed with refresh if needed and execute body
-               (when ,refresh
-                 (condition-case err
-                   (progn
-                     (revert-buffer t t t)
-                     (org-set-regexps-and-options)
-                     (org-element-cache-reset))
-                   (error
-                     (organism-debug "Error refreshing buffer: %s" (error-message-string err)))))
+  (let ((marker-sym (make-symbol "marker"))
+        (buffer-sym (make-symbol "buffer"))
+        (existing-buffers-sym (make-symbol "existing-buffers"))
+        (result-sym (make-symbol "result")))
+    `(let* ((,existing-buffers-sym (mapcar #'buffer-name (buffer-list)))
+            (,marker-sym (org-id-find (node-id ,entry) t))
+            ,buffer-sym ,result-sym)
+       (if (not ,marker-sym)
+         (progn
+           (organism-debug "Could not find location for ID: %s"
+             (node-id ,entry))
+           nil)
+         (unwind-protect
+           (progn
+             (setq ,buffer-sym (marker-buffer ,marker-sym))
+             (with-current-buffer ,buffer-sym
+               (if (and ,refresh (buffer-modified-p))
+                 (progn
+                   (organism-debug "Buffer %s has unsaved changes, skip refresh"
+                     (buffer-name))
+                   (setq ,result-sym nil))
+                 (when ,refresh
+                   (condition-case err
+                     (progn
+                       (revert-buffer t t t)
+                       (org-set-regexps-and-options)
+                       (org-element-cache-reset))
+                     (error
+                       (organism-debug "Error refreshing buffer: %s"
+                         (error-message-string err)))))
 
-               (goto-char marker)
-               ,@body)))
-         (move-marker marker nil)))))
+                 (save-excursion
+                   (goto-char ,marker-sym)
+                   (setq ,result-sym (progn ,@body))))))
+           (progn
+             (move-marker ,marker-sym nil)
+             (organism-entry--cleanup-buffer ,buffer-sym ,existing-buffers-sym)))
+         ,result-sym))))
 
-;;; Initialization and Refresh
+;;; Initialization and refresh
 
 (cl-defmethod initialize-instance :after ((entry organism-entry) &rest _)
   "Initialize ENTRY with org data from its ID."
@@ -140,7 +155,7 @@ execution. Return nil if entry's location cannot be found."
 (cl-defmethod organism-entry--refresh ((entry organism-entry))
   "Refresh ENTRY data from its ID location in org files.
 Returns t if successful, nil if refresh was skipped or failed."
-  (organism-with-entry-location entry :refresh
+  (organism-entry--with-entry-location entry :refresh
     (let ((element (org-element-at-point))
           (current-file (buffer-file-name))
           (current-heading (when (org-at-heading-p) (org-get-heading t t t t))))
@@ -181,7 +196,7 @@ Returns t if successful, nil if refresh was skipped or failed."
   "Return non-nil if ENTRY is a heading entry (level > 0)."
   (> (organism-entry-level entry) 0))
 
-;;; Basic Properties
+;;; Basic properties
 
 (cl-defmethod organism-entry-property ((entry organism-entry) (key string) &optional default)
   "Return property drawer value for KEY in ENTRY, or DEFAULT if not found.
@@ -194,7 +209,7 @@ KEY is case-insensitive."
 (cl-defmethod organism-entry-element ((entry organism-entry))
   "Get the org element at ENTRY's location."
   (or (graph-node-attr-get entry :cached-element)
-    (let ((element (organism-with-entry-location entry
+    (let ((element (organism-entry--with-entry-location entry
                      (org-element-at-point))))
       (when element
         (graph-node-attr-put entry :cached-element element))
@@ -210,7 +225,7 @@ KEY is case-insensitive."
         (format "%s (%s)" file-name title)
         (format "%s > %s" file-name title)))))
 
-;;; Content Extraction
+;;; Content extraction
 
 (cl-defmethod organism-entry-tags ((entry organism-entry) &optional inherited-p)
   "Get tags for ENTRY from cached properties.
@@ -239,7 +254,7 @@ When INCLUDE-SUBTREE is non-nil and ENTRY is a heading, search all subheadings."
     ;; Fetch links if not cached
     (unless all-links
       (setq all-links
-        (organism-with-entry-location entry
+        (organism-entry--with-entry-location entry
           (let* ((file-entry-p (organism-entry-file-p entry))
                  (start-point (if file-entry-p (point-min) (point)))
                  (end-point (cond
