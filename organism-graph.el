@@ -50,7 +50,7 @@
   "Flag to prevent recursive graph processing during updates.
 Used to avoid infinite loops when updating interconnected entries.")
 
-;;; Core Graph Functions
+;;; Core graph functions
 
 (defun organism-graph--handle-removed-entries (stats)
   "Remove entries whose files no longer exist.
@@ -189,7 +189,7 @@ Returns t if sync was complete, nil if some entries couldn't be processed."
 
     ;; Set elapsed time in stats
     (setf (organism-graph-stats-elapsed-time stats)
-      (float-time (time-since start-time)))
+          (float-time (time-since start-time)))
 
     ;; Display a descriptive message
     (message "%s" (organism-utils-format-status stats "Graph refresh"))
@@ -308,28 +308,49 @@ Returns the number of successful connection updates, or nil on error."
       nil)))
 
 (defun organism-graph-update-file (file)
-  "Update the graph to reflect changes in FILE.
-Refreshes entries in the given file and updates their connections.
-Returns the number of entries updated."
+  "Update the graph to reflect changes in FILE."
   (when (and organism-graph
-          (not organism-graph--processing)
-          (file-exists-p file))
+             (not organism-graph--processing)
+             (file-exists-p file))
     (let ((organism-graph--processing t)
-          (updated-count 0))
+          (stats (make-organism-graph-stats))
+          (start-time (current-time))
+          (initial-edge-count (graph-edge-count organism-graph))
+          (known-ids-before (mapcar #'node-id (organism-graph-entries))))
 
-      (organism-debug "Processing file: %s" file)
+      ;; Force org-id to update its locations for this file
+      (org-id-update-id-locations (list file))
 
-      ;; Process all entries in this file
-      (dolist (id (organism-get-ids-in-file file))
-        (when-let ((entry (organism-graph--try-create-entry id)))
-          (organism-entry--refresh entry)
-          (when (organism-graph--try-update-connections entry)
-            (cl-incf updated-count))))
+      ;; Get IDs after updating locations
+      (let ((file-ids (organism-get-ids-in-file file)))
+        (organism-debug "Processing file with %d IDs: %s" (length file-ids) file)
 
-      (organism-debug "File update complete: %d entries updated" updated-count)
-      updated-count)))
+        ;; Process all entries in this file
+        (dolist (id file-ids)
+          (let ((is-new-id (not (member id known-ids-before))))
+            (when-let ((entry (organism-graph-get-or-create-entry id)))
+              ;; Only count as new if it wasn't in the graph before
+              (when is-new-id
+                (cl-incf (organism-graph-stats-entries-added stats)))
 
-;;; Entry and Edge Management
+              ;; Refresh and process the entry
+              (when (organism-entry--refresh entry)
+                (cl-incf (organism-graph-stats-entries-processed stats))
+                (organism-graph-update-connections entry)))))
+
+        ;; Count edge differences after all entries are processed
+        (let ((final-edge-count (graph-edge-count organism-graph)))
+          (when (> final-edge-count initial-edge-count)
+            (cl-incf (organism-graph-stats-edges-added stats)
+              (- final-edge-count initial-edge-count)))))
+
+      ;; Set elapsed time and display message
+      (setf (organism-graph-stats-elapsed-time stats)
+            (float-time (time-since start-time)))
+      (message "%s" (organism-utils-format-status stats "File update"))
+      (organism-graph-stats-entries-processed stats))))
+
+;;; Entry and edge management
 
 (defun organism-graph-get-or-create-entry (id)
   "Get entry with ID from the graph, or create it if it doesn't exist.
@@ -364,21 +385,37 @@ Only includes organism-entry objects, filtering out any other node types."
 (defun organism-graph-update-connections (entry)
   "Update all connections for ENTRY in the graph.
 Removes all existing outgoing edges and creates new ones based on
-current links in the entry. Returns the number of connections created."
-  (let ((from-id (node-id entry))
-        (connection-count 0))
-    ;; First remove all outgoing edges from this entry
-    (dolist (edge (graph-node-edges organism-graph from-id))
-      (graph-edge-remove organism-graph edge))
+current links in the entry. Returns the number of new connections created."
+  (let* ((entry-id (node-id entry))
+         (old-edges (graph-node-edges organism-graph entry-id))
+         (old-target-edges (make-list (length old-edges) nil))
+         (current-links (organism-entry-links entry "id"))
+         (new-connections 0))
 
-    ;; Then add edges for all ID links
-    (dolist (link (organism-entry-links entry "id"))
-      (let ((target-id (plist-get link :target)))
+    ;; Index old edges by target ID for quick lookup
+    (dotimes (i (length old-edges))
+      (let ((edge (nth i old-edges)))
+        (setf (nth i old-target-edges) (cons (edge-to edge) edge))))
+
+    ;; Process all current links
+    (dolist (link current-links)
+      (let* ((target-id (plist-get link :target)))
         (when (and target-id (not (string-empty-p target-id)))
-          (when (organism-graph-create-edge entry target-id
-                  (list :link-text (plist-get link :raw-link)))
-            (cl-incf connection-count)))))
-    connection-count))
+          ;; Look for existing edge to this target
+          (let ((existing (assoc target-id old-target-edges)))
+            (if existing
+              ;; Remove from old-target-edges so we don't delete it later
+              (setq old-target-edges (delete existing old-target-edges))
+              ;; No existing edge, create new one
+              (when (organism-graph-create-edge entry target-id
+                      (list :link-text (plist-get link :raw-link)))
+                (cl-incf new-connections)))))))
+
+    ;; Remove remaining old edges that weren't found in current links
+    (dolist (pair old-target-edges)
+      (when pair
+        (graph-edge-remove organism-graph (cdr pair))))
+    new-connections))
 
 (defun organism-graph-create-edge (from-entry to-id &optional edge-attrs)
   "Create an edge from FROM-ENTRY to TO-ID in the graph.
@@ -412,7 +449,7 @@ Returns t if edge was created, nil otherwise."
             :attrs edge-attrs)
           t)))))
 
-;;; Query Functions
+;;; Query functions
 
 (defun organism-graph-linked-entries (entry &optional include-incoming)
   "Return entries linked from ENTRY.

@@ -196,9 +196,10 @@ Returns t if successful, nil if refresh was skipped or failed."
   "Return non-nil if ENTRY is a heading entry (level > 0)."
   (> (organism-entry-level entry) 0))
 
-;;; Basic properties
+;;; Properties
 
-(cl-defmethod organism-entry-property ((entry organism-entry) (key string) &optional default)
+(cl-defmethod organism-entry-property ((entry organism-entry) (key string)
+                                       &optional default)
   "Return property drawer value for KEY in ENTRY, or DEFAULT if not found.
 KEY is case-insensitive."
   (unless (stringp key)
@@ -219,13 +220,12 @@ KEY is case-insensitive."
   "Get the label for ENTRY suitable for minibuffer completion."
   (with-slots (properties) entry
     (let ((file-name (file-name-nondirectory
-                       (or (alist-get "FILE" properties nil nil #'cl-equalp) "")))
+                       (or (alist-get "FILE" properties nil nil #'cl-equalp)
+                           "")))
           (title (or (organism-entry-title entry) "Untitled")))
       (if (organism-entry-file-p entry)
         (format "%s (%s)" file-name title)
         (format "%s > %s" file-name title)))))
-
-;;; Content extraction
 
 (cl-defmethod organism-entry-tags ((entry organism-entry) &optional inherited-p)
   "Get tags for ENTRY from cached properties.
@@ -241,49 +241,60 @@ When INHERITED-P is non-nil, return all tags including inherited ones."
           (substring-no-properties tags))
         ":" t))))
 
-(cl-defmethod organism-entry-links ((entry organism-entry) &optional type include-subtree)
+(cl-defmethod organism-entry-links ((entry organism-entry)
+                                    &optional type include-subtree)
   "Return a list of links in ENTRY.
 Each link is represented as a plist with :type and :target properties.
 TYPE can be nil (get all links), a string (e.g. \"id\"), or a list of strings.
 When INCLUDE-SUBTREE is non-nil and ENTRY is a heading, search all subheadings."
-  (organism-check-type type '(or string list))
+  (organism-check-type type '(or null string list))
   (organism-check-type include-subtree 'boolean)
-  ;; Create cache key based on subtree flag
+
   (let* ((cache-key (if include-subtree :links-with-subtree :links-entry-only))
          (all-links (graph-node-attr-get entry cache-key)))
     ;; Fetch links if not cached
     (unless all-links
       (setq all-links
-        (organism-entry--with-entry-location entry
+        (organism-entry--with-entry-location entry :refresh
           (let* ((file-entry-p (organism-entry-file-p entry))
                  (start-point (if file-entry-p (point-min) (point)))
                  (end-point (cond
                               (file-entry-p (point-max))
-                              (include-subtree (save-excursion (org-end-of-subtree t t)))
+                              (include-subtree
+                                (save-excursion
+                                  (org-end-of-subtree t t)))
                               (t (save-excursion
                                    (outline-next-heading)
                                    (point))))))
             (goto-char start-point)
             (cl-loop while (and (< (point) end-point)
-                             (re-search-forward org-link-any-re end-point t))
+                                (re-search-forward org-link-any-re end-point t))
               for element = (org-element-context)
               when (eq (org-element-type element) 'link)
               for link-type = (org-element-property :type element)
               for path = (org-element-property :path element)
               for raw-link = (org-element-property :raw-link element)
-              collect (list :type link-type :target path :raw-link raw-link)))))
-      ;; Cache the results
+              when (and link-type path raw-link)
+              collect (list :type link-type
+                        :target path
+                        :raw-link raw-link)))))
+      ;; Cache the results if we found any
       (when all-links
         (graph-node-attr-put entry cache-key all-links)))
+
+    ;; Return an empty list if all-links is nil
+    (setq all-links (or all-links '()))
+
     ;; Filter by type
     (if (not type)
       all-links
       (cl-remove-if-not
         (lambda (link)
           (let ((link-type (plist-get link :type)))
-            (cond
-              ((stringp type) (cl-equalp link-type type))
-              ((listp type) (member-ignore-case link-type type)))))
+            (when link-type
+              (cond
+                ((stringp type) (cl-equalp link-type type))
+                ((listp type) (member-ignore-case link-type type))))))
         all-links))))
 
 (provide 'organism-entry)

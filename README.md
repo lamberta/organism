@@ -30,7 +30,17 @@ Load the packages in your `.emacs` configuration:
   :after (graphael org)
   :custom
   (organism-directory "~/org")  ; default to org-directory
+  (organism-capture-templates-default "o")  ; key from org-capture-templates
   (organism-debug-enabled t))
+```
+
+Set up an example `org-capture` template with automatic UUID and timestamp:
+
+```elisp
+(setq org-capture-templates
+  `(("o" "Organism entry" plain
+      (file (lambda () (expand-file-name (concat (format-time-string "%Y%m%d%H%M") "-entry.org") organism-directory)))
+      ":PROPERTIES:\n:ID:       %(org-id-uuid) \n:CREATED:  %<%Y-%m-%dT%H:%M:%S%z>\n:END:\n#+TITLE: %i\n\n%?")))
 ```
 
 ## Basic usage
@@ -67,19 +77,15 @@ added, deleted, or modified outside of Emacs, rebuild the graph using
 
 ## Developer commands
 
-Byte-compile Elisp files for compilation warnings:
-
 ```bash
+;; Byte-compile Elisp files for compilation warnings
 $ make
-```
 
-Run tests:
-
-```bash
+;; Run tests
 $ make test
 ```
 
-Use a different version of Emacs:
+To run with a different version of Emacs:
 
 ```bash
 $ EMACS=/path/to/bin/emacs make test

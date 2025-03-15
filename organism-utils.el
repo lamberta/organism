@@ -57,6 +57,33 @@ TIMESTAMP should be in ISO 8601 format or any supported by `date-to-time`."
         (time (date-to-time timestamp)))
     (format-time-string fmt-string time)))
 
+(defun organism-utils-slugify (title)
+  "Create a slug string from TITLE.
+Converts to lowercase and replaces non-alphanumeric characters with hyphens."
+  (let ((default-slug "untitled"))
+    (if (string-blank-p title)
+        default-slug
+      (let ((slug (downcase title)))
+        ;; Replace common accented characters
+        (setq slug (replace-regexp-in-string
+                   "[áàâäãéèêëíìîïóòôöõúùûüçñ]"
+                   (lambda (match)
+                     (pcase match
+                       ((or "á" "à" "â" "ä" "ã") "a")
+                       ((or "é" "è" "ê" "ë") "e")
+                       ((or "í" "ì" "î" "ï") "i")
+                       ((or "ó" "ò" "ô" "ö" "õ") "o")
+                       ((or "ú" "ù" "û" "ü") "u")
+                       ("ç" "c")
+                       ("ñ" "n")))
+                   slug))
+        ;; Replace non-alphanumeric with hyphens
+        (setq slug (replace-regexp-in-string "[^a-z0-9]+" "-" slug))
+        (setq slug (replace-regexp-in-string "-+" "-" slug))
+        (setq slug (replace-regexp-in-string "^-\\|-$" "" slug))
+
+        (if (string-empty-p slug) default-slug slug)))))
+
 ;; Formatting minibuffer status message
 
 (defun organism-utils--pluralize (count singular &optional plural)
@@ -84,14 +111,15 @@ TIMESTAMP should be in ISO 8601 format or any supported by `date-to-time`."
       (add-change entries-added "entry" "added" "entries")
       (add-change edges-removed "connection" "removed")
       (add-change edges-added "connection" "added")
-      ;; Format the status string
-      (format "%s complete (%.2fs): %s%s"
+
+      ;; Format the status string with consistent "processed" wording
+      (format "%s complete (%.2fs): %s processed%s"
         action-name
         elapsed
         (organism-utils--pluralize entries-processed "entry" "entries")
         (if changes-parts
           (format " (%s)" (string-join (nreverse changes-parts) ", "))
-          " processed")))))
+          "")))))
 
 ;;; Entries
 

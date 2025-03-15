@@ -87,23 +87,13 @@ This is the root directory where organism will scan for org files."
   :type 'boolean
   :group 'organism)
 
-(defcustom organism-capture-templates
-  '(("d" "Organism entry" plain (file)
-     ":PROPERTIES:\n:ID:       %i\n:CREATED:  %t\n:END:\n#+TITLE: %T\n\n%?"))
-  "Templates for organism entry capture. Defaults to first item.
-Each template should be a list in the `org-capture-templates' format.
-The template body supports additional format specifiers:
-- %i: Entry ID (UUID)
-- %t: Creation timestamp
-- %T: Title of the entry
-See `org-capture-templates' for details on template structure."
-  :group 'organism
-  :type '(repeat (list :tag "Capture template"
-                   (string :tag "Keys")
-                   (string :tag "Description")
-                   (symbol :tag "Type")
-                   (list :tag "Target")
-                   (string :tag "Template body"))))
+(defcustom organism-capture-templates-default nil
+  "Select the default template for organism capture.
+This should match a character key from your `org-capture-templates'.
+If nil, the first template is used."
+  :type '(choice (const :tag "Use first template" nil)
+                 (string :tag "Template key"))
+  :group 'organism)
 
 ;;; Mode
 

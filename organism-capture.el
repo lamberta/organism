@@ -21,15 +21,9 @@
 
 ;; This file provides functions for finding and linking to entries
 ;; in the organism graph.
-;;
-;; Main functions:
-;; - organism-find: Find or create an entry and visit it
-;; - organism-link: Insert a link to an entry at point
-;; - organism-link-immediate: Insert a link to a placeholder entry without visiting
 
 ;;; Code:
 
-(require 'format-spec)
 (require 'org)
 (require 'org-id)
 (require 'org-capture)
@@ -40,12 +34,9 @@
 
 ;; Declare free variables defined in main file.
 (defvar organism-directory)
-(defvar organism-capture-templates)
+(defvar organism-capture-templates-default)
 
-;;; Entry Completion
-
-(defconst organism-capture--title-max-length 45
-  "Maximum length for entry titles in completion.")
+;;; Entry completion
 
 (defvar organism-capture--current-candidates nil
   "Current completion candidates for organism entries.")
@@ -53,10 +44,11 @@
 (defun organism-capture--candidate-label (entry)
   "Format ENTRY as a candidate string for completion.
 Returns a cons cell with displayable label and entry object."
-  (cons
-    (truncate-string-to-width (organism-entry-title entry)
-      organism-capture--title-max-length nil ?\s "…")
-    entry))
+  (let ((max-length 45)  ; Max length for entry titles in completion column.
+        (title (or (organism-entry-title entry) "Untitled")))
+    (cons
+      (truncate-string-to-width title max-length nil ?\s "…")
+      entry)))
 
 (defun organism-capture--candidate-annotator (candidate)
   "Annotate CANDIDATE for minibuffer completion selection.
@@ -130,109 +122,69 @@ FILTER-FN, if provided, filters completion candidates."
   (organism-check-type initial-input '(or null string) "initial-input")
   (organism-check-type filter-fn '(or null function) "filter-fn")
 
-  (let* ((selection (organism-capture--completing-read prompt initial-input filter-fn))
+  (let* ((selection (organism-capture--completing-read prompt
+                      initial-input filter-fn))
          (entry (cdr (assoc selection organism-capture--current-candidates))))
     (cl-values selection entry)))
 
-;;; Template Generation
+(defun organism-capture--get-template-key ()
+  "Get the template key to use for organism capture.
+Use `organism-capture-templates-default' if set, otherwise the first template."
+  (cond
+    ;; Case 1: User has specified a key that exists
+    ((and organism-capture-templates-default
+          (assoc organism-capture-templates-default org-capture-templates))
+      organism-capture-templates-default)
 
-(defun organism-capture--slugify (title)
-  "Create a slug string from TITLE.
-Converts to lowercase and replaces non-alphanumeric characters with hyphens."
-  (if (string-blank-p title)
-    "untitled"
-    (let ((slug (downcase title)))
-      ;; Replace common accented characters
-      (setq slug (replace-regexp-in-string
-                   "[áàâäãéèêëíìîïóòôöõúùûüçñ]"
-                   (lambda (match)
-                     (pcase match
-                       ((or "á" "à" "â" "ä" "ã") "a")
-                       ((or "é" "è" "ê" "ë") "e")
-                       ((or "í" "ì" "î" "ï") "i")
-                       ((or "ó" "ò" "ô" "ö" "õ") "o")
-                       ((or "ú" "ù" "û" "ü") "u")
-                       ("ç" "c")
-                       ("ñ" "n")))
-                   slug))
-      ;; Replace non-alphanumeric with hyphens
-      (setq slug (replace-regexp-in-string "[^a-z0-9]+" "-" slug))
-      (setq slug (replace-regexp-in-string "-+" "-" slug))
-      (setq slug (replace-regexp-in-string "^-\\|-$" "" slug))
+    ;; Case 2: User specified key doesn't exist
+    (organism-capture-templates-default
+      (user-error "Template key '%s' not found in org-capture-templates"
+        organism-capture-templates-default))
 
-      (if (string-empty-p slug) "untitled" slug))))
+    ;; Case 3: Find the first real template (not a group)
+    ((> (length org-capture-templates) 0)
+      (let ((template (car org-capture-templates)))
+        (if (and (listp template) (>= (length template) 5))
+          (car template)
+          (user-error "No valid capture templates found - first entry appears to be a group"))))
 
-(defun organism-capture--build-template (template &optional title)
-  "Process TEMPLATE to create an org-capture ready template with substitutions.
-TEMPLATE is a capture template formatted like `organism-capture-templates'.
-TITLE is an optional string used for the note title and filename.
-The function replaces format specifiers in the template:
-%i = UUID, %t = timestamp, %T = title, %%? = cursor position.
+    ;; Case 4: No templates available
+    (t
+      (user-error "No org-capture-templates defined. Please configure at least one template"))))
 
-Returns multiple values:
-- Processed template ready for `org-capture'
-- Generated UUID
-- File path destination"
-  (organism-check-type template 'list "template")
-  (organism-check-type title '(or null string) "title")
-
-  (let* ((id (org-id-uuid))
-         (title (or title "untitled"))
-         (slug (organism-capture--slugify title))
-         (file-name (format "%s-%s.org" (format-time-string "%Y%m%d%H%M%S") slug))
-         (file-path (expand-file-name file-name organism-directory))
-         (timestamp (format-time-string "%Y-%m-%dT%H:%M:%S%z"))  ; ISO 8601
-         (template (copy-tree template))
-         (template-string (nth 4 template))
-         (spec (format-spec-make
-                 ?i id
-                 ?t timestamp
-                 ?T title)))
-    (organism-debug "Building template for %s at %s" title file-path)
-
-    ;; Replace the file target with our specific file
-    (setf (nth 3 template) `(file ,file-path))
-    ;; Format the template with our values
-    (let ((filled-template (format-spec template-string spec t)))
-      (setf (nth 4 template) filled-template))
-    ;; Return
-    (cl-values template id file-path)))
-
-(defun organism-capture--update-graph-after-capture (file-path id callback)
-  "Set up a one-time capture hook to update the graph for FILE-PATH and ID.
-After capture completes, run CALLBACK with ID if successful.
-The hook registers the ID location and updates the graph when capture completes."
-  (organism-check-type file-path 'string)
-  (organism-check-type id 'string)
+(defun organism-capture--update-graph-after-capture (callback)
+  "Set up a one-time capture hook to update graph and run CALLBACK."
   (organism-check-type callback 'function)
-  (organism-debug "Setting up after-finalize hook for %s" id)
 
   (cl-labels ((finalize-hook ()
                 (remove-hook 'org-capture-after-finalize-hook #'finalize-hook)
-                (condition-case err
-                  (progn
-                    (when (and (not org-note-abort)
-                               (file-exists-p file-path))
-                      (organism-debug "Registering ID location for %s at %s" id file-path)
-                      (org-id-add-location id file-path)
-
-                      ;; Update graph and handle possible errors
-                      (if (and organism-graph
-                               (organism-graph-update-file file-path))
-                        (progn
-                          (organism-debug "Successfully updated graph for new entry %s" id)
-                          (funcall callback id))
-                        (organism-debug "Failed to update graph for new entry %s" id))
-
-                      ;; Verify ID was properly registered
-                      (unless (org-id-find id 'marker)
-                        (organism-debug "Failed to register ID location for %s" id))))
-                  (error
-                    (organism-debug "Error in capture finalization: %s"
-                      (error-message-string err))))))
+                (unless org-note-abort
+                  (when-let ((marker org-capture-last-stored-marker)
+                             (buffer (marker-buffer org-capture-last-stored-marker))
+                             (file (buffer-file-name buffer)))
+                    ;; Validate file is in organism-directory
+                    (if (file-in-directory-p file organism-directory)
+                      (progn
+                        ;; Visit the marker to find the ID
+                        (with-current-buffer buffer
+                          (goto-char marker)
+                          (when-let ((id (org-id-get)))
+                            ;; Register the ID in org-id-locations
+                            (org-id-add-location id file)
+                            ;; Update graph with the file
+                            (organism-debug "Updating graph for new entry: %s at %s" id file)
+                            (organism-graph-update-file file)
+                            ;; Call the callback with the ID
+                            (funcall callback id))))
+                      ;; File is outside organism-directory
+                      (message "Organism WARNING: Entry created outside organism-directory - not added to graph")
+                      (with-current-buffer buffer
+                        (goto-char marker)
+                        (when-let ((id (org-id-get)))
+                          (funcall callback id))))))))
     (add-hook 'org-capture-after-finalize-hook #'finalize-hook)))
 
-;;; Public Interface Functions
+;;; Public interface functions
 
 ;;;###autoload
 (defun organism-find (&optional initial-input filter-fn)
@@ -254,23 +206,13 @@ When creating a new entry, prompts for confirmation before proceeding."
       ;; Entry not found - create new
       (when (y-or-n-p (format "Create new entry '%s'? " selection))
         (organism-debug "Creating new entry: %s" selection)
-        (cl-multiple-value-bind (template id file-path)
-          (organism-capture--build-template
-            (car organism-capture-templates)  ; Select first template
-            selection)
-          (organism-capture--update-graph-after-capture file-path id #'ignore)
-          ;; Override templates with `organism-capture-templates'
-          (let ((org-capture-templates (list template))
-                (template-key (car template)))
-            (org-capture nil template-key)))))))
+        (let ((org-capture-initial selection))
+          (org-capture nil (organism-capture--get-template-key)))))))
 
 ;;;###autoload
 (defun organism-link (&optional filter-fn)
   "Find an organism entry and insert a link to it at point.
-FILTER-FN filters completion candidates if provided.
-
-When an existing entry is found, inserts a link to it immediately.
-When creating a new entry, captures a new file and then inserts a link to it."
+FILTER-FN filters completion candidates if provided."
   (interactive)
   (unless organism-graph
     (user-error "Enable organism-mode"))
@@ -288,32 +230,21 @@ When creating a new entry, captures a new file and then inserts a link to it."
       (when (y-or-n-p (format "Create new entry '%s'? " selection))
         (let ((orig-buf (current-buffer))
               (orig-point (point)))
-          (cl-multiple-value-bind (template id file-path)
-            (organism-capture--build-template
-              (car organism-capture-templates)  ; Select first template
-              selection)
-            (organism-capture--update-graph-after-capture
-              file-path id
-              (lambda (id)
-                (with-current-buffer orig-buf
-                  (goto-char orig-point)
-                  (insert (org-link-make-string (concat "id:" id) selection)))))
-            ;; Override templates with `organism-capture-templates'
-            (let ((org-capture-templates (list template))
-                  (template-key (car template)))
-              (org-capture nil template-key))))))))
+          (organism-capture--update-graph-after-capture
+            (lambda (id)
+              (with-current-buffer orig-buf
+                (goto-char orig-point)
+                (insert (org-link-make-string (concat "id:" id) selection)))))
+          (let ((org-capture-initial selection))
+            (org-capture nil (organism-capture--get-template-key))))))))
 
 ;;;###autoload
 (defun organism-link-immediate (&optional filter-fn)
   "Insert a link to an organism entry without visiting it.
-If no matching entry exists with FILTER-FN, create a placeholder.
-
-Unlike `organism-link', this function creates entries immediately
-without using the capture process, so no editing is performed."
+If no matching entry exists with FILTER-FN, create a placeholder entry."
   (interactive)
   (unless organism-graph
     (user-error "Enable organism-mode"))
-
   (unless (derived-mode-p 'org-mode)
     (user-error "Not in an org-mode buffer"))
 
@@ -325,22 +256,27 @@ without using the capture process, so no editing is performed."
 
       ;; Entry not found - create new
       (when (y-or-n-p (format "Create new entry '%s'? " selection))
-        ;; For immediate linking, create the file directly
-        (cl-multiple-value-bind (template id file-path)
-          (organism-capture--build-template
-            (car organism-capture-templates)  ; Select first template
-            selection)
-          (organism-debug "Creating immediate entry '%s' at %s" selection file-path)
-          ;; Write template directly to file
-          (with-temp-file file-path
-            ;; Remove cursor locator from template
-            (insert (replace-regexp-in-string "\\(%\\?\\)" ""
-                      (nth 4 template))))
-          ;; Register and update graph
-          (org-id-add-location id file-path)
-          (organism-graph-update-file file-path)
-          ;; Insert link
-          (insert (org-link-make-string (concat "id:" id) selection)))))))
+        (let* ((orig-buf (current-buffer))
+               (orig-point (point))
+               ;; Get template key
+               (template-key (organism-capture--get-template-key))
+               ;; Create temporary modified template with :immediate-finish
+               (org-capture-templates
+                 (mapcar (lambda (template)
+                           (if (equal (car template) template-key)
+                             ;; Add :immediate-finish to the template
+                             (append template '(:immediate-finish t))
+                             template))
+                   org-capture-templates)))
+
+          (organism-capture--update-graph-after-capture
+            (lambda (id)
+              (with-current-buffer orig-buf
+                (goto-char orig-point)
+                (insert (org-link-make-string (concat "id:" id) selection)))))
+
+          (let ((org-capture-initial selection))
+            (org-capture nil template-key)))))))
 
 (provide 'organism-capture)
 ;;; organism-capture.el ends here

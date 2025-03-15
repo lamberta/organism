@@ -243,6 +243,45 @@
       (setq organism-directory old-organism-directory)
       (organism-graph-test--teardown))))
 
+(ert-deftest organism-graph-test-update-file-status ()
+  "Test status tracking in organism-graph-update-file."
+  (let ((old-organism-directory organism-directory)
+        (file-id (org-id-uuid))
+        (target-id (org-id-uuid))
+        (file-path nil))
+    (unwind-protect
+      (progn
+        (organism-graph-test--setup)
+        (setq organism-directory organism-graph-test--temp-dir)
+        ;; Create test graph
+        (setq organism-graph (make-instance 'graph))
+        ;; 1. Create target file first
+        (organism-graph-test--create-org-file target-id "Target" "Target content")
+        ;; 2. Add target to graph directly
+        (organism-graph-get-or-create-entry target-id)
+        ;; 3. Create source file with link to target
+        (setq file-path (organism-graph-test--create-org-file
+                          file-id "Source" (format "Link to [[id:%s][target]]" target-id)))
+        ;; Track edge count before and after
+        (let ((initial-edge-count (graph-edge-count organism-graph))
+              (captured-stats nil))
+          ;; Mock status function
+          (cl-letf (((symbol-function 'organism-utils-format-status)
+                      (lambda (stats _)
+                        (setq captured-stats stats)
+                        "Mocked message")))
+            ;; Update file
+            (organism-graph-update-file file-path)
+            ;; Verify actual edge addition in graph structure
+            (let ((new-edge-count (graph-edge-count organism-graph)))
+              (should (= (- new-edge-count initial-edge-count) 1))
+              ;; Then verify stats reflect the actual change
+              (should (= (organism-graph-stats-entries-processed captured-stats) 1))
+              (should (= (organism-graph-stats-edges-added captured-stats) 1))))))
+      ;; Cleanup
+      (organism-graph-test--teardown)
+      (setq organism-directory old-organism-directory))))
+
 (defun organism-graph-test-create-linked-files (id1 id2)
   "Create two test files with IDs ID1 and ID2, with a link from ID1 to ID2."
   (let ((file1-path (organism-graph-test--create-org-file
@@ -321,6 +360,64 @@
       (setq org-directory old-org-directory)
       (setq organism-directory old-organism-directory)
       (organism-graph-test--teardown))))
+
+(ert-deftest organism-graph-test-link-update-scenarios ()
+  "Test status reporting for various linking scenarios."
+  (let ((old-organism-directory organism-directory)
+        (source-id (org-id-uuid))
+        (target-id (org-id-uuid))
+        (source-path nil)
+        (target-path nil))
+    (unwind-protect
+      (progn
+        (organism-graph-test--setup)
+        (setq organism-directory organism-graph-test--temp-dir)
+        ;; Create test graph
+        (setq organism-graph (make-instance 'graph))
+        ;; Test scenario 1: Adding link to existing entry
+        (setq target-path (organism-graph-test--create-org-file
+                            target-id "Target" "Content"))
+        (organism-graph-update-file target-path) ;; Add target to graph
+
+        (setq source-path (organism-graph-test--create-org-file
+                            source-id "Source" "No links yet"))
+        (organism-graph-update-file source-path) ;; Add source to graph
+
+        ;; Now update source with link to target
+        (with-temp-file source-path
+          (insert
+            (format ":PROPERTIES:\n:ID: %s\n:END:\n#+TITLE: Source\n\nLink to [[id:%s][target]]"
+              source-id target-id)))
+
+        ;; Capture stats and verify
+        (let ((captured-stats nil))
+          (cl-letf (((symbol-function 'organism-utils-format-status)
+                      (lambda (stats _)
+                        (setq captured-stats stats)
+                        "Mocked message")))
+            (organism-graph-update-file source-path)
+            (should (= (organism-graph-stats-entries-processed captured-stats) 1))
+            (should (= (organism-graph-stats-entries-added captured-stats) 0))
+            (should (= (organism-graph-stats-edges-added captured-stats) 1))))
+
+        ;; Test scenario 2: Creating new entry with link
+        (let ((new-id (org-id-uuid))
+              (new-path (expand-file-name "new-entry.org" organism-directory)))
+          (with-temp-file new-path
+            (insert (format ":PROPERTIES:\n:ID: %s\n:END:\n#+TITLE: New\n\nContent" new-id)))
+
+          (let ((captured-stats nil))
+            (cl-letf (((symbol-function 'organism-utils-format-status)
+                        (lambda (stats _)
+                          (setq captured-stats stats)
+                          "Mocked message")))
+              (organism-graph-update-file new-path)
+              (should (= (organism-graph-stats-entries-processed captured-stats) 1))
+              (should (= (organism-graph-stats-entries-added captured-stats) 1))
+              (should (= (organism-graph-stats-edges-added captured-stats) 0))))))
+      ;; Cleanup
+      (organism-graph-test--teardown)
+      (setq organism-directory old-organism-directory))))
 
 (ert-deftest organism-graph-test-heading-entries ()
   "Test entries in headings."

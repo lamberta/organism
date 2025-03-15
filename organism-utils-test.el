@@ -73,6 +73,74 @@
     (wrong-type-argument
       (should (string-match-p "test-arg" (error-message-string err))))))
 
+(ert-deftest organism-utils-test-slugify ()
+  "Test organism-utils-slugify function."
+  ;; Basic slugification
+  (should (string= (organism-utils-slugify "Hello World!") "hello-world"))
+  (should (string= (organism-utils-slugify "  Spaces  ") "spaces"))
+  (should (string= (organism-utils-slugify "Multiple---Dashes") "multiple-dashes"))
+  (should (string= (organism-utils-slugify "-trim-edges-") "trim-edges"))
+
+  ;; Handling special cases
+  (should (string= (organism-utils-slugify "") "untitled"))
+  (should (string= (organism-utils-slugify "   ") "untitled"))
+
+  ;; International characters
+  (should (string= (organism-utils-slugify "Café") "cafe"))
+  (should (string= (organism-utils-slugify "Naïve") "naive")))
+
+(ert-deftest organism-utils-test-format-status ()
+  "Test organism-utils-format-status function."
+  ;; Test simple case - just processed entries
+  (let ((stats (make-organism-graph-stats
+                 :entries-processed 5
+                 :elapsed-time 1.5)))
+    (should (string= (organism-utils-format-status stats "Test")
+              "Test complete (1.50s): 5 entries processed")))
+
+  ;; Test with added entries
+  (let ((stats (make-organism-graph-stats
+                 :entries-processed 5
+                 :entries-added 3
+                 :elapsed-time 1.5)))
+    (should (string= (organism-utils-format-status stats "Test")
+              "Test complete (1.50s): 5 entries processed (3 entries added)")))
+
+  ;; Test with added connections
+  (let ((stats (make-organism-graph-stats
+                 :entries-processed 5
+                 :edges-added 2
+                 :elapsed-time 1.5)))
+    (should (string= (organism-utils-format-status stats "Test")
+              "Test complete (1.50s): 5 entries processed (2 connections added)")))
+
+  ;; Test with removed entries
+  (let ((stats (make-organism-graph-stats
+                 :entries-processed 5
+                 :entries-removed 1
+                 :elapsed-time 1.5)))
+    (should (string= (organism-utils-format-status stats "Test")
+              "Test complete (1.50s): 5 entries processed (1 entry removed)")))
+
+  ;; Test complex case - multiple types of changes
+  (let ((stats (make-organism-graph-stats
+                 :entries-processed 10
+                 :entries-added 2
+                 :entries-removed 1
+                 :edges-added 3
+                 :edges-removed 2
+                 :elapsed-time 2.75)))
+    (should (string-match-p "Test complete (2.75s): 10 entries processed"
+              (organism-utils-format-status stats "Test")))
+    (should (string-match-p "2 entries added"
+              (organism-utils-format-status stats "Test")))
+    (should (string-match-p "1 entry removed"
+              (organism-utils-format-status stats "Test")))
+    (should (string-match-p "3 connections added"
+              (organism-utils-format-status stats "Test")))
+    (should (string-match-p "2 connections removed"
+              (organism-utils-format-status stats "Test")))))
+
 (ert-deftest organism-utils-test-get-ids-in-file ()
   "Test organism-get-ids-in-file function."
   (unwind-protect
