@@ -171,6 +171,40 @@
       ;; Cleanup
       (organism-entry-test--teardown))))
 
+(ert-deftest organism-entry-test-category ()
+  "Test organism-entry-category function."
+  (let ((file-id (org-id-uuid))
+        (heading-id (org-id-uuid))
+        (file-path nil))
+    (unwind-protect
+      (progn
+        (organism-entry-test--setup)
+        ;; Create file with default category (matches filename)
+        (setq file-path (organism-entry-test--create-file
+                          "TestCategory.org"
+                          (format ":PROPERTIES:\n:ID: %s\n:END:\n#+TITLE: Test Category\n\n* Heading\n  :PROPERTIES:\n  :ID: %s\n  :CATEGORY: CustomCategory\n  :END:"
+                            file-id heading-id)))
+        ;; Register IDs
+        (organism-entry-test--register-id file-id file-path)
+        (organism-entry-test--register-id heading-id file-path)
+        ;; Test file entry with default category
+        (let ((file-entry (make-instance 'organism-entry :id file-id)))
+          ;; Without inheritance, should return nil (default category)
+          (should-not (organism-entry-category file-entry))
+          ;; With inheritance, should return the actual category
+          (should (string= (organism-entry-category file-entry t)
+                           "TestCategory")))
+        ;; Test heading with custom category
+        (let ((heading-entry (make-instance 'organism-entry :id heading-id)))
+          ;; Without inheritance, should return the custom category
+          (should (string= (organism-entry-category heading-entry)
+                           "CustomCategory"))
+          ;; With inheritance, should also return the custom category
+          (should (string= (organism-entry-category heading-entry t)
+                           "CustomCategory"))))
+      ;; Cleanup
+      (organism-entry-test--teardown))))
+
 (ert-deftest organism-entry-test-element ()
   "Test basic organism-entry-element functionality."
   (let ((file-id (org-id-uuid))

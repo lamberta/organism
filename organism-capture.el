@@ -56,7 +56,10 @@ Adds file, type, timestamp and tag information for selected entry."
   (when-let* ((entry (cdr (assoc candidate
                             organism-capture--current-candidates))))
     (or (graph-node-attr-get entry :annotation)
-      (let* ((type (if (organism-entry-file-p entry) "file" "heading"))
+      (let* ((category (organism-entry-category entry))
+             (type (if category
+                     category
+                     (if (organism-entry-file-p entry) "file" "heading")))
              (tags (mapconcat 'identity (organism-entry-tags entry) ":"))
              (timestamp (organism-entry-property entry "CREATED"))
              (summary (organism-entry-property entry "SUMMARY"))
@@ -65,7 +68,7 @@ Adds file, type, timestamp and tag information for selected entry."
              (annotation
                (concat
                  " "
-                 (propertize (format "%-7s" type) 'face 'font-lock-type-face)
+                 (propertize (format "%-10s" type) 'face 'font-lock-type-face)
                  "  "
                  (if timestamp
                    (propertize (organism-format-timestamp timestamp "%Y-%m-%d")

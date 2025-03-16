@@ -164,6 +164,50 @@
           (should (= (length candidates) 1)))))
     (organism-capture-test--teardown)))
 
+(ert-deftest organism-capture-test-annotator-with-category ()
+  "Test that organism-capture--candidate-annotator properly handles categories."
+  (unwind-protect
+    (progn
+      (organism-capture-test--setup)
+      ;; Create test entries with and without categories
+      (let* ((id1 (org-id-uuid))
+             (id2 (org-id-uuid))
+              ;; Entry with default category
+              (entry1 (organism-capture-test--create-entry id1 "Regular Entry" "Content"))
+              ;; Entry with custom category
+              (file-path (expand-file-name "with-category.org"
+                           organism-capture-test--temp-dir)))
+
+        ;; Create file with explicit category
+        (with-temp-file file-path
+          (insert
+            (format ":PROPERTIES:\n:ID: %s\n:CATEGORY: CustomCat\n:CREATED: %s\n:END:\n#+TITLE: Categorized\n\nContent"
+              id2
+              (format-time-string "%Y-%m-%dT%H:%M:%S%z"))))
+
+        ;; Register the ID and update the graph
+        (org-id-add-location id2 file-path)
+        (organism-graph-update-file file-path)
+        (let ((entry2 (organism-graph-get-entry id2)))
+          ;; Setup organism-capture--current-candidates for testing
+          (setq organism-capture--current-candidates
+            (list (cons (car (organism-capture--candidate-label entry1)) entry1)
+                  (cons (car (organism-capture--candidate-label entry2)) entry2)))
+
+          ;; Test annotation with default category
+          (let* ((label1 (car (organism-capture--candidate-label entry1)))
+                 (annotation1 (organism-capture--candidate-annotator label1)))
+            (should annotation1)
+            (should (string-match-p "file" annotation1)))
+
+          ;; Test annotation with custom category
+          (let* ((label2 (car (organism-capture--candidate-label entry2)))
+                 (annotation2 (organism-capture--candidate-annotator label2)))
+            (should annotation2)
+            (should (string-match-p "CustomCat" annotation2))
+            (should-not (string-match-p "file" annotation2))))))
+    (organism-capture-test--teardown)))
+
 ;;; Mock utilities
 
 (defmacro organism-capture-test--with-mocks (bindings &rest body)

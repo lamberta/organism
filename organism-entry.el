@@ -227,6 +227,22 @@ KEY is case-insensitive."
         (format "%s (%s)" file-name title)
         (format "%s > %s" file-name title)))))
 
+(cl-defmethod organism-entry-category ((entry organism-entry) &optional inherited-p)
+  "Get the CATEGORY property for ENTRY if explicitly set.
+Returns nil if the category matches the base filename (default behavior).
+When INHERITED-P is non-nil, return the category regardless of source."
+  (organism-check-type inherited-p 'boolean)
+  (let* ((category (organism-entry-property entry "CATEGORY"))
+         (file-path (organism-entry-property entry "FILE"))
+         (basename (if file-path
+                     (file-name-base file-path))))
+    (if inherited-p
+      ;; Just return whatever category is found
+      category
+      ;; Return nil if category matches basename (not explicitly set)
+      (if (and category basename (not (string= category basename)))
+        category))))
+
 (cl-defmethod organism-entry-tags ((entry organism-entry) &optional inherited-p)
   "Get tags for ENTRY from cached properties.
 When INHERITED-P is non-nil, return all tags including inherited ones."
