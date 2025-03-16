@@ -30,17 +30,7 @@ Load the packages in your `.emacs` configuration:
   :after (graphael org)
   :custom
   (organism-directory "~/org")  ; default to org-directory
-  (organism-capture-templates-default "o")  ; key from org-capture-templates
   (organism-debug-enabled t))
-```
-
-Set up an example `org-capture` template with automatic UUID and timestamp:
-
-```elisp
-(setq org-capture-templates
-  `(("o" "Organism entry" plain
-      (file (lambda () (expand-file-name (concat (format-time-string "%Y%m%d%H%M") "-entry.org") organism-directory)))
-      ":PROPERTIES:\n:ID:       %(org-id-uuid) \n:CREATED:  %<%Y-%m-%dT%H:%M:%S%z>\n:END:\n#+TITLE: %i\n\n%?")))
 ```
 
 ## Basic usage
@@ -74,6 +64,46 @@ internal graph representation when you start `organism-mode`. Entries
 are automatically updated when Emacs saves a file. But if a file is
 added, deleted, or modified outside of Emacs, rebuild the graph using
 `organism-rescan`.
+
+### Capture templates
+
+*Organism* adds helper utilities for the standard Org capture template
+system. Configure a template directory and the default template key to
+use when capturing entries:
+
+```elisp
+(setq organism-capture-templates-directory
+  (expand-file-name "templates" org-directory))
+
+(setq organism-capture-templates-default "n")  ; Note template key
+```
+
+Configure the Org
+[capture templates](https://orgmode.org/manual/Capture-templates.html):
+
+```
+(setq org-capture-templates
+  '(("n" "Note" plain
+      (file (lambda ()
+              (expand-file-name
+                (format "notes/%s.org" (format-time-string "%Y-%m-%d_%H%M%S"))
+                org-directory)))
+      (function (lambda ()
+                  (organism-utils-template-contents "note.org"))))))
+```
+
+And your `note.org` file template may generate a UUID and timestamp:
+
+```
+:PROPERTIES:
+:ID:       %(org-id-uuid)
+:CREATED:  [%<%Y-%m-%d %H:%M:%S%z>]
+:CATEGORY: note
+:END:
+#+TITLE: %i
+
+%?
+```
 
 ## Developer commands
 

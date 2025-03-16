@@ -95,6 +95,14 @@ If nil, the first template is used."
                  (string :tag "Template key"))
   :group 'organism)
 
+(defcustom organism-capture-templates-directory nil
+  "Directory containing template files for Org capture.
+Template contents are inserted as strings into standard `org-capture-templates'
+using `organism-utils-template-contents'."
+  :type '(choice (const :tag "No template directory" nil)
+                 (directory :tag "Templates directory"))
+  :group 'organism)
+
 ;;; Mode
 
 ;;;###autoload

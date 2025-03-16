@@ -57,33 +57,6 @@ TIMESTAMP should be in ISO 8601 format or any supported by `date-to-time`."
         (time (date-to-time timestamp)))
     (format-time-string fmt-string time)))
 
-(defun organism-utils-slugify (title)
-  "Create a slug string from TITLE.
-Converts to lowercase and replaces non-alphanumeric characters with hyphens."
-  (let ((default-slug "untitled"))
-    (if (string-blank-p title)
-        default-slug
-      (let ((slug (downcase title)))
-        ;; Replace common accented characters
-        (setq slug (replace-regexp-in-string
-                   "[áàâäãéèêëíìîïóòôöõúùûüçñ]"
-                   (lambda (match)
-                     (pcase match
-                       ((or "á" "à" "â" "ä" "ã") "a")
-                       ((or "é" "è" "ê" "ë") "e")
-                       ((or "í" "ì" "î" "ï") "i")
-                       ((or "ó" "ò" "ô" "ö" "õ") "o")
-                       ((or "ú" "ù" "û" "ü") "u")
-                       ("ç" "c")
-                       ("ñ" "n")))
-                   slug))
-        ;; Replace non-alphanumeric with hyphens
-        (setq slug (replace-regexp-in-string "[^a-z0-9]+" "-" slug))
-        (setq slug (replace-regexp-in-string "-+" "-" slug))
-        (setq slug (replace-regexp-in-string "^-\\|-$" "" slug))
-
-        (if (string-empty-p slug) default-slug slug)))))
-
 ;; Formatting minibuffer status message
 
 (defun organism-utils--pluralize (count singular &optional plural)
@@ -156,6 +129,52 @@ Only includes files that exist and are within `organism-directory'."
                  (cl-pushnew file files :test #'equal)))
       org-id-locations)
     files))
+
+;; Capture template helpers
+
+(defun organism-utils-slugify (title)
+  "Create a slug string from TITLE.
+Converts to lowercase and replaces non-alphanumeric characters with hyphens."
+  (let ((default-slug "untitled"))
+    (if (string-blank-p title)
+        default-slug
+      (let ((slug (downcase title)))
+        ;; Replace common accented characters
+        (setq slug (replace-regexp-in-string
+                   "[áàâäãéèêëíìîïóòôöõúùûüçñ]"
+                   (lambda (match)
+                     (pcase match
+                       ((or "á" "à" "â" "ä" "ã") "a")
+                       ((or "é" "è" "ê" "ë") "e")
+                       ((or "í" "ì" "î" "ï") "i")
+                       ((or "ó" "ò" "ô" "ö" "õ") "o")
+                       ((or "ú" "ù" "û" "ü") "u")
+                       ("ç" "c")
+                       ("ñ" "n")))
+                   slug))
+        ;; Replace non-alphanumeric with hyphens
+        (setq slug (replace-regexp-in-string "[^a-z0-9]+" "-" slug))
+        (setq slug (replace-regexp-in-string "-+" "-" slug))
+        (setq slug (replace-regexp-in-string "^-\\|-$" "" slug))
+
+        (if (string-empty-p slug) default-slug slug)))))
+
+(defun organism-utils-template-contents (filename &optional base-dir)
+  "Get file contents of template FILENAME from BASE-DIR or templates directory.
+Load from BASE-DIR if provided, otherwise use
+`organism-capture-templates-directory'.
+Returns the file contents as a string, or error if file doesn't exist."
+  (let* ((dir (or base-dir
+                  (and (boundp 'organism-capture-templates-directory)
+                       organism-capture-templates-directory)))
+         (file-path (if dir
+                      (expand-file-name filename dir)
+                      filename)))
+    (unless (file-exists-p file-path)
+      (error "Template file not found: %s" file-path))
+    (with-temp-buffer
+      (insert-file-contents file-path)
+      (buffer-string))))
 
 (provide 'organism-utils)
 ;;; organism-utils.el ends here
