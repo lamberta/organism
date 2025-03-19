@@ -159,22 +159,5 @@ Converts to lowercase and replaces non-alphanumeric characters with hyphens."
 
         (if (string-empty-p slug) default-slug slug)))))
 
-(defun organism-utils-template-contents (filename &optional base-dir)
-  "Get file contents of template FILENAME from BASE-DIR or templates directory.
-Load from BASE-DIR if provided, otherwise use
-`organism-capture-templates-directory'.
-Returns the file contents as a string, or error if file doesn't exist."
-  (let* ((dir (or base-dir
-                  (and (boundp 'organism-capture-templates-directory)
-                       organism-capture-templates-directory)))
-         (file-path (if dir
-                      (expand-file-name filename dir)
-                      filename)))
-    (unless (file-exists-p file-path)
-      (error "Template file not found: %s" file-path))
-    (with-temp-buffer
-      (insert-file-contents file-path)
-      (buffer-string))))
-
 (provide 'organism-utils)
 ;;; organism-utils.el ends here

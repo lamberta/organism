@@ -88,19 +88,11 @@ This is the root directory where organism will scan for org files."
   :group 'organism)
 
 (defcustom organism-capture-templates-default nil
-  "Select the default template for organism capture.
+  "Select the default template key for organism capture.
 This should match a character key from your `org-capture-templates'.
 If nil, the first template is used."
   :type '(choice (const :tag "Use first template" nil)
                  (string :tag "Template key"))
-  :group 'organism)
-
-(defcustom organism-capture-templates-directory nil
-  "Directory containing template files for Org capture.
-Template contents are inserted as strings into standard `org-capture-templates'
-using `organism-utils-template-contents'."
-  :type '(choice (const :tag "No template directory" nil)
-                 (directory :tag "Templates directory"))
   :group 'organism)
 
 ;;; Mode

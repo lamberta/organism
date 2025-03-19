@@ -201,30 +201,5 @@
   (should (string= (organism-utils-slugify "Café") "cafe"))
   (should (string= (organism-utils-slugify "Naïve") "naive")))
 
-(ert-deftest organism-utils-test-template-contents ()
-  "Test organism-utils-template-contents function."
-  (unwind-protect
-    (progn
-      (organism-utils-test--setup)
-      ;; Create test template files
-      (let* ((template-content "# Template content\n\n* Heading\n  Content here")
-             (template-file (organism-utils-test--create-file
-                              "template.org" template-content)))
-        ;; Test with explicit base directory
-        (should (string= (organism-utils-template-contents
-                           "template.org" organism-utils-test--temp-dir)
-                         template-content))
-        ;; Test with organism-capture-templates-directory
-        (let ((organism-capture-templates-directory organism-utils-test--temp-dir))
-          (should (string= (organism-utils-template-contents "template.org")
-                           template-content)))
-        ;; Test with nonexistent file
-        (should-error (organism-utils-template-contents "nonexistent.org"
-                        organism-utils-test--temp-dir))
-        ;; Test with absolute path
-        (should (string= (organism-utils-template-contents template-file)
-                         template-content))))
-    (organism-utils-test--teardown)))
-
 (provide 'organism-utils-test)
 ;;; organism-utils-test.el ends here

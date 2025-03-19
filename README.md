@@ -67,19 +67,15 @@ added, deleted, or modified outside of Emacs, rebuild the graph using
 
 ### Capture templates
 
-*Organism* adds helper utilities for the standard Org capture template
-system. Configure a template directory and the default template key to
-use when capturing entries:
+*Organism* uses standard Org
+[capture templates](https://orgmode.org/manual/Capture-templates.html). Set the
+default template key to use with the Organism capture commands:
 
 ```elisp
-(setq organism-capture-templates-directory
-  (expand-file-name "templates" org-directory))
-
-(setq organism-capture-templates-default "n")  ; Note template key
+(setq organism-capture-templates-default "n")  ; Use Note template key
 ```
 
-Configure the Org
-[capture templates](https://orgmode.org/manual/Capture-templates.html):
+And configure a template:
 
 ```
 (setq org-capture-templates
@@ -89,10 +85,12 @@ Configure the Org
                 (format "notes/%s.org" (format-time-string "%Y-%m-%d_%H%M%S"))
                 org-directory)))
       (function (lambda ()
-                  (organism-utils-template-contents "note.org"))))))
+                  (with-temp-buffer
+                    (insert-file-contents "note.org")
+                    (buffer-string)))))))
 ```
 
-And your `note.org` file template may generate a UUID and timestamp:
+Your `note.org` file template might generate a UUID and timestamp:
 
 ```
 :PROPERTIES:
